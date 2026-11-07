@@ -36,8 +36,10 @@
         <button id="addTofu">Add Tofu</button>
         <button id="addFile">Add .vrm file…</button>
         <input id="file" type="file" accept=".vrm" hidden />
+        <label id="localLabel" hidden>Local models <select id="local"></select></label>
+        <button id="addLocal" hidden>Add</button>
       </div>
-      <p id="note">Every model is driven by the same rendered utterance at the same time. Files you open stay in your browser.</p>
+      <p id="note">Every model is driven by the same rendered utterance at the same time. Files you open stay in your browser. Models in <code>app/public/models/</code> are listed under Local models on your own machine and are never published.</p>
     </header>
     <main id="grid"></main>
     <script type="module" src="/src/playground/main.ts"></script>

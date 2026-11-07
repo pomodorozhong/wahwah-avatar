@@ -1,5 +1,6 @@
 # Model archives stay local; do not publish them.
 models/
+app/public/models/
 *.zip
 *.vrm
 node_modules/
