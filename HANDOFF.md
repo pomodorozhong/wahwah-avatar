@@ -19,7 +19,8 @@
 2. Move the model picking and generic VRM support out of wahwah, then remove them there ([avatar split plan](https://github.com/pomodorozhong/wahwah/blob/main/docs/avatar-split.md), steps 1, 2, 4 and 5). Transfer wahwah issues #6 and #11 first.
 3. Bring in the visual and mouth experiments (split step 3). The sources are kept locally in `experiments/`, copied from `codex/backup-puppet-experiments-2026-11-02` at `4442a8c` in wahwah; they target the old layout and are not committed.
 4. Add the Twitch and OBS app. It needs the hash-voice interface on wahwah's roadmap.
-5. Move from the tarball to the published package once wahwah is on npm ([pomodorozhong/wahwah#25](https://github.com/pomodorozhong/wahwah/issues/25)).
+5. Support Syphon output for OBS on macOS ([#1](https://github.com/pomodorozhong/wahwah-avatar/issues/1)). It starts with an OBS Browser Source; the sender and project structure are open questions in the issue.
+6. Move from the tarball to the published package once wahwah is on npm ([pomodorozhong/wahwah#25](https://github.com/pomodorozhong/wahwah/issues/25)).
 
 ## Pending
 
