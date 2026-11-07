@@ -6,7 +6,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { actingChannels, bodyChannels, buildMeshes, jawWeights, poses } from './mesh.mjs';
 import { cubeStudies } from './cubes.mjs';
 
-const output = new URL('../../public/tofu/',import.meta.url);
+const output = new URL('../../app/public/tofu/',import.meta.url);
 const metre = .14;
 
 

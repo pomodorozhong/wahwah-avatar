@@ -3,10 +3,10 @@
 
 import { DEFAULT_VOICE, loadVoices, renderMumble } from 'wahwah';
 import { sampleFaceTrack, type RenderedUtterance } from 'wahwah/performance';
-import { Player } from './playback';
+import { Player } from '../shared/playback';
 import * as THREE from 'three';
-import { VrmFace } from './host/vrm';
-import { ControlFollower } from './host/follower';
+import { VrmFace } from '../shared/host/vrm';
+import { ControlFollower } from '../shared/host/follower';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = byId<HTMLElement>('grid');

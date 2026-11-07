@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { Box3, Vector3 } from 'three';
-import { cubeStudies as designs } from '../scripts/tofu/cubes.mjs';
-import { actingChannels, jawWeights } from '../scripts/tofu/mesh.mjs';
-import { StudyMotion } from '../src/host/studyMotion';
+import { cubeStudies as designs } from '../../tools/tofu/cubes.mjs';
+import { actingChannels, jawWeights } from '../../tools/tofu/mesh.mjs';
+import { StudyMotion } from '../src/shared/host/studyMotion';
 import { NEUTRAL } from 'wahwah/performance';
 
 it.each(designs)('$name keeps its cube silhouette at rest', design => {

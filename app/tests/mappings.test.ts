@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Blinker, controlsToVrmVisemes } from '../src/host/mappings';
+import { Blinker, controlsToVrmVisemes } from '../src/shared/host/mappings';
 
 const sum = (v: Record<string, number>) => Object.values(v).reduce((a, b) => a + b, 0);
 
