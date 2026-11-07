@@ -1,0 +1,8 @@
+# Model archives stay local; do not publish them.
+models/
+*.zip
+*.vrm
+node_modules/
+dist/
+.DS_Store
+!public/tofu/corner-cut.vrm
