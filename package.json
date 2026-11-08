@@ -19,6 +19,7 @@
     "wahwah": "https://github.com/pomodorozhong/wahwah/releases/download/v0.1.0/wahwah-0.1.0.tgz"
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
     "@types/three": "^0.187.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",

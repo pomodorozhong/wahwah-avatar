@@ -7,6 +7,7 @@ import { Player } from '../shared/playback';
 import * as THREE from 'three';
 import { VrmFace } from '../shared/host/vrm';
 import { ControlFollower } from '../shared/host/follower';
+import localModels from 'virtual:local-models';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = byId<HTMLElement>('grid');
@@ -132,6 +133,18 @@ fileEl.addEventListener('change', () => {
   }
   fileEl.value = '';
 });
+
+if (localModels.vrm.length) {
+  const select = byId<HTMLSelectElement>('local');
+  const name = (f: string) => f.split('/').pop()!.replace(/\.vrm$/i, '');
+  select.replaceChildren(...localModels.vrm.map((f) => new Option(name(f), f)));
+  byId('localLabel').hidden = false;
+  byId('addLocal').hidden = false;
+  byId('addLocal').addEventListener('click', () => {
+    const file = select.value;
+    addPanel({ url: `${import.meta.env.BASE_URL}models/${file}`, label: name(file), tofu: false });
+  });
+}
 
 addPanel({ url: TOFU_URL, label: 'Tofu', tofu: true });
 void loadVoices().then(() => (speakBtn.disabled = false));
