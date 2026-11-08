@@ -6,6 +6,9 @@ import type * as THREE from 'three';
 import { type FaceControls } from 'wahwah/performance';
 import type { FaceNavigation } from './faceNavigation';
 
+/** How a model is drawn. Variants other than `standard` are chosen by the model file (see `wahwahRenderStyle` in tools/remake-vrm-models.mjs). */
+export type RenderStyle = 'standard' | 'painted-toon' | 'ink-dither' | 'comic-print';
+
 export interface FaceHost {
   readonly scene: THREE.Scene;
   readonly camera: THREE.Camera;

@@ -2,6 +2,7 @@
 // each cell holds. Pure data with no DOM, so saving and loading can be tested.
 
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
+import { inkMethods, type InkMethod } from '../shared/host/inkMethods';
 
 /** Most columns or rows; 4 x 4 is 16 panels, about the WebGL context cap that the shared renderer avoids. */
 export const MAX_SIDE = 4;
@@ -12,6 +13,8 @@ export interface CellState {
   /** `tofu`, `local:<file>` or `file:<id>`; null for an empty cell. */
   model: string | null;
   mouth: MouthMode;
+  /** Dither method, used only by a model drawn in the one-bit ink style. */
+  ink: InkMethod;
 }
 
 export interface Layout {
@@ -21,12 +24,12 @@ export interface Layout {
   cells: CellState[];
 }
 
-const emptyCell = (): CellState => ({ model: null, mouth: 'original' });
+const emptyCell = (): CellState => ({ model: null, mouth: 'original', ink: 'bayer' });
 
 export const clampSide = (n: number): number => (Number.isFinite(n) ? Math.min(MAX_SIDE, Math.max(1, Math.round(n))) : 1);
 
 export function defaultLayout(): Layout {
-  return { cols: 2, rows: 1, cells: [{ model: 'tofu', mouth: 'original' }, emptyCell()] };
+  return { cols: 2, rows: 1, cells: [{ model: 'tofu', mouth: 'original', ink: 'bayer' }, emptyCell()] };
 }
 
 /** Change the grid size; cells keep their row and column, new cells are empty. */
@@ -49,6 +52,7 @@ export function serializeLayout(layout: Layout): string {
   const cells = layout.cells.map((cell) => ({
     model: cell.model !== null && isPersistentModel(cell.model) ? cell.model : null,
     mouth: cell.mouth,
+    ink: cell.ink,
   }));
   return JSON.stringify({ cols: layout.cols, rows: layout.rows, cells });
 }
@@ -63,10 +67,11 @@ export function parseLayout(text: string | null, valid: (model: string) => boole
     const rows = clampSide(data.rows);
     const savedCells: unknown[] = data.cells;
     const cells = Array.from({ length: cols * rows }, (_, i): CellState => {
-      const saved = savedCells[i] as { model?: unknown; mouth?: unknown } | undefined;
+      const saved = savedCells[i] as { model?: unknown; mouth?: unknown; ink?: unknown } | undefined;
       const model = typeof saved?.model === 'string' && valid(saved.model) ? saved.model : null;
       const mouth = typeof saved?.mouth === 'string' && saved.mouth in mouthModes ? (saved.mouth as MouthMode) : 'original';
-      return { model, mouth };
+      const ink = typeof saved?.ink === 'string' && saved.ink in inkMethods ? (saved.ink as InkMethod) : 'bayer';
+      return { model, mouth, ink };
     });
     return { cols, rows, cells };
   } catch {

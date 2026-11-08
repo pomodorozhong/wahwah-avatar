@@ -5,16 +5,25 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMExpressionMorphTargetBind, VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { NEUTRAL, type FaceControls } from 'wahwah/performance';
-import type { FaceHost } from './host';
+import type { FaceHost, RenderStyle } from './host';
 import { Blinker, controlsToVrmVisemes } from './mappings';
 import { FaceNavigation } from './faceNavigation';
 import { StudyMotion } from './studyMotion';
 import { PuppetMouth } from './puppetMouth';
+import { applySurfaceStyle } from './surfaceStyle';
 import type { MouthMode } from './mouthPlan';
 
 /** Vertical extent of the framed face, in metres. */
 const FRAME_HEIGHT = 0.42;
 const TOFU_CAMERA = new THREE.Vector3(0.43, 0.31, 1).normalize();
+
+const STYLES: readonly RenderStyle[] = ['painted-toon', 'ink-dither', 'comic-print'];
+
+/** The style a model file asks for in its glTF asset extras, or `standard`. */
+function styleOf(asset: { extras?: unknown } | undefined): RenderStyle {
+  const id = (asset?.extras as { wahwahRenderStyle?: unknown } | undefined)?.wahwahRenderStyle;
+  return STYLES.find((style) => style === id) ?? 'standard';
+}
 
 export class VrmFace implements FaceHost {
   readonly scene = new THREE.Scene();
@@ -25,6 +34,8 @@ export class VrmFace implements FaceHost {
   mouthMode: MouthMode = 'original';
   /** Set when the loaded model is the sample the replacement mouths were cut for. */
   puppetMouth?: PuppetMouth;
+  /** How the loaded model is drawn, from its file; the playground adds the full-screen pass for it. */
+  renderStyle: RenderStyle = 'standard';
   status ='Choose a VRM model.';
   private vrm: VRM | null = null;
   private readonly focus = new THREE.Vector3(0, 1.4, 0);
@@ -81,6 +92,8 @@ export class VrmFace implements FaceHost {
       }
       this.vrm = vrm;
       this.puppetMouth = isTofu ? undefined : PuppetMouth.forModel(vrm);
+      this.renderStyle = isTofu ? 'standard' : styleOf(gltf.asset);
+      if (this.renderStyle !== 'standard') applySurfaceStyle(vrm.scene, this.renderStyle);
       this.stage.add(vrm.scene);
       if (vrm.lookAt) vrm.lookAt.target = this.camera;
       vrm.update(0);

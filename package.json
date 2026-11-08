@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "build:pages": "npm run build -- --mode pages",
     "build:tofu": "node tools/tofu/build.mjs",
+    "models:styles": "node tools/remake-vrm-models.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "preview": "vite preview"

@@ -9,10 +9,10 @@ const grid = (): Layout => ({
   cols: 2,
   rows: 2,
   cells: [
-    { model: 'tofu', mouth: 'plates' },
-    { model: 'local:vrm/a.vrm', mouth: 'original' },
-    { model: null, mouth: 'original' },
-    { model: 'file:1', mouth: 'gesturePlates' },
+    { model: 'tofu', mouth: 'plates', ink: 'bayer' },
+    { model: 'local:vrm/a.vrm', mouth: 'original', ink: 'clustered' },
+    { model: null, mouth: 'original', ink: 'bayer' },
+    { model: 'file:1', mouth: 'gesturePlates', ink: 'bayer' },
   ],
 });
 
@@ -47,6 +47,7 @@ describe('serializeLayout and parseLayout', () => {
     expect(loaded.cells.map((c) => c.model)).toEqual(['tofu', 'local:vrm/a.vrm', null, null]);
     expect(loaded.cells[0].mouth).toBe('plates');
     expect(loaded.cells[3].mouth).toBe('gesturePlates');
+    expect(loaded.cells[1].ink).toBe('clustered');
   });
 
   it('empties a cell whose local model is gone', () => {
@@ -60,11 +61,16 @@ describe('serializeLayout and parseLayout', () => {
     expect(parseLayout('{"cols":"2"}', valid)).toEqual(defaultLayout());
   });
 
+  it('ignores an unknown dither method', () => {
+    const loaded = parseLayout('{"cols":1,"rows":1,"cells":[{"model":"tofu","ink":"nope"}]}', valid);
+    expect(loaded.cells[0].ink).toBe('bayer');
+  });
+
   it('clamps the size, pads short cell lists and ignores an unknown mouth', () => {
     const loaded = parseLayout('{"cols":9,"rows":1,"cells":[{"model":"tofu","mouth":"nope"}]}', valid);
     expect(loaded.cols).toBe(MAX_SIDE);
     expect(loaded.cells).toHaveLength(MAX_SIDE);
-    expect(loaded.cells[0]).toEqual({ model: 'tofu', mouth: 'original' });
+    expect(loaded.cells[0]).toEqual({ model: 'tofu', mouth: 'original', ink: 'bayer' });
     expect(loaded.cells[1].model).toBeNull();
   });
 });

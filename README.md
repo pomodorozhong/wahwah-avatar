@@ -15,6 +15,10 @@ The `wahwah` package comes from a [release tarball](https://github.com/pomodoroz
 
 A panel showing the VRoid "Constraint Twist" sample (`VRM1_Constraint_Twist_Sample.vrm`) gets a **Mouth** menu. **Replacement mouths** draws one of five cut-paper mouths in place of the model's own, held for a twelfth of a second. **Gesture-driven replacements** picks the drawing from the syllable rhythm. Four more modes change the model's own mouth with shader patches: **Sculpted lips** (a crisp seal and broader tooth-bearing spread), **Ink contour** (an outlined mouth drawn on the skin), **Hinged jaw** (the chin tips on a hinge) and **Gesture replay** (frames traced from a reference animation, stretched to each syllable). Other models and Tofu have no menu. The sample is not in this repository.
 
+### Visual styles
+
+A model file can ask for a look by setting `wahwahRenderStyle` in its glTF asset extras: `painted-toon` (flat pigments, brush variation), `ink-dither` (one-bit ink on paper, with a dither menu in the cell) or `comic-print` (halftone dots, hatching and a print registration offset). The playground applies the look when it loads the model, so put the variants in cells next to the original to compare them. `npm run models:styles` rebuilds the three variants from the sample into `app/public/models/vrm/` (it changes only material settings and metadata, and the output stays git-ignored). Pass a source path, a destination folder and a thumbnails folder as arguments to change the defaults.
+
 ## Checks
 
 ```bash
