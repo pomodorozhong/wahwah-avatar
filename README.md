@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-The `wahwah` package comes from a [release tarball](https://github.com/pomodorozhong/wahwah/blob/main/docs/interface.md), so no Rust toolchain is needed. The playground renders one utterance, plays its audio once, and drives every panel from the same face-control track. **Add .vrm file…** opens a model from your computer; it never leaves the browser. To list models at startup, put `.vrm` files under `app/public/models/` (git-ignored); they appear under **Local models** with an **Add** button. The Pages build leaves that folder out and never lists it.
+The `wahwah` package comes from a [release tarball](https://github.com/pomodorozhong/wahwah/blob/main/docs/interface.md), so no Rust toolchain is needed. The playground renders one utterance, plays its audio once, and drives every cell of a grid from the same face-control track. Set the grid to up to 4 columns by 4 rows, and pick a model for each cell from its menu. The grid size and each cell's model and mouth are saved in your browser; **Reset layout** clears them. **Open .vrm file…** opens a model from your computer into the first empty cell; it never leaves the browser, and a file you opened is not restored after a reload. To list models at startup, put `.vrm` files under `app/public/models/` (git-ignored); they appear in each cell's model menu. The Pages build leaves that folder out and never lists it.
 
 ### Replacement mouths
 
