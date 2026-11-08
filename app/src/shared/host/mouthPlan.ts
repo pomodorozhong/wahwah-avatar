@@ -7,6 +7,10 @@ export const mouthModes = {
   original: 'Original VRM',
   plates: 'Replacement mouths',
   gesturePlates: 'Gesture-driven replacements',
+  blend: 'Sculpted lips',
+  contour: 'Ink contour',
+  hinge: 'Hinged jaw',
+  gesture: 'Gesture replay',
 } as const;
 
 export type MouthMode = keyof typeof mouthModes;
@@ -47,6 +51,30 @@ export class PlateHold {
     return this.index;
   }
 }
+
+/** Hinged jaw: the chin tips on a hinge, so the morphs only supply part of the opening. */
+export function hingeControls(c: FaceControls): FaceControls {
+  return { jawOpen: 0.7 * c.jawOpen, lipWidth: 0.45 * c.lipWidth, lipRound: 0.45 * c.lipRound };
+}
+
+/** Hinge angle in radians for the chin. */
+export const hingeAngle = (c: FaceControls): number => 0.2 * Math.sqrt(c.jawOpen);
+
+/**
+ * Sculpted lips: three independent weights. A crisp seal, early vowel volume,
+ * and a broad tooth-bearing spread on emphatic syllables.
+ */
+export function blendControls(c: FaceControls): FaceControls {
+  const round = Math.sqrt(c.lipRound);
+  return {
+    jawOpen: Math.min(1, 1.6 * Math.sqrt(c.jawOpen)),
+    lipRound: round,
+    lipWidth: Math.min(1 - round, 0.36 * c.jawOpen + 1.35 * c.lipWidth),
+  };
+}
+
+/** Scale for a replacement drawn during a gesture: small on soft syllables, full on loud ones. */
+export const gestureScale = (c: FaceControls): number => 0.57 + 0.43 * Math.min(1, Math.max(0, Math.sqrt(mouthEnergy(c))));
 
 /** Frames of one reference beat: the broad grin, then the round-mouth gesture. */
 export const grinFrames = [0, 1, 1, 2, 2, 1, 2, 1, 1, 3];
