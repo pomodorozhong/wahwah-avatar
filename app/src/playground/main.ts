@@ -28,6 +28,9 @@ const rowsEl = byId<HTMLInputElement>('rows');
 const gl = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 
 const TOFU_URL = `${import.meta.env.BASE_URL}tofu/corner-cut.vrm`;
+/** Menu entry that opens the file picker instead of choosing a model. */
+const OPEN = '__open__';
+let pendingCell: Cell | null = null;
 const modelName = (f: string) => f.split('/').pop()!.replace(/\.vrm$/i, '');
 
 /** Files opened from disk this session; they cannot come back after a reload. */
@@ -60,6 +63,7 @@ function modelOptions(): HTMLOptionElement[] {
     new Option('Tofu', 'tofu'),
     ...localModels.vrm.map((f) => new Option(modelName(f), `local:${f}`)),
     ...[...files].map(([id, f]) => new Option(f.label, `file:${id}`)),
+    new Option('Open .vrm file…', OPEN),
   ];
 }
 
@@ -98,6 +102,12 @@ function makeCell(model: string | null, mouth: MouthMode): Cell {
   };
   modelEl.replaceChildren(...modelOptions());
   modelEl.addEventListener('change', () => {
+    if (modelEl.value === OPEN) {
+      modelEl.value = modelEl.dataset.prev ?? '';
+      pendingCell = cell;
+      fileEl.click();
+      return;
+    }
     setModel(cell, modelEl.value || null);
     save();
   });
@@ -116,9 +126,11 @@ function setModel(cell: Cell, model: string | null): void {
   cell.mouthEl.hidden = true;
   cell.ctx.clearRect(0, 0, cell.canvas.width, cell.canvas.height);
   cell.modelEl.value = model ?? '';
+  cell.modelEl.dataset.prev = cell.modelEl.value;
   const source = model ? resolveSource(model) : null;
   if (!source) {
     cell.modelEl.value = '';
+    cell.modelEl.dataset.prev = '';
     return;
   }
   const host = new VrmFace();
@@ -308,15 +320,21 @@ byId('resetLayout').addEventListener('click', () => {
   loadLayout(null);
 });
 
-byId('addFile').addEventListener('click', () => fileEl.click());
 fileEl.addEventListener('change', () => {
+  const target = pendingCell;
+  pendingCell = null;
+  let first = true;
   for (const file of fileEl.files ?? []) {
     const id = String(nextFileId++);
     files.set(id, { url: URL.createObjectURL(file), label: file.name });
-    for (const cell of cells) cell.modelEl.add(new Option(file.name, `file:${id}`));
-    const empty = cells.find((c) => !c.modelEl.value);
-    if (empty) setModel(empty, `file:${id}`);
-    else alert(`${file.name} is added to every cell's model menu, but no cell is empty. Choose a cell and pick it there.`);
+    for (const cell of cells) cell.modelEl.add(new Option(file.name, `file:${id}`), cell.modelEl.options.length - 1);
+    // The cell whose menu was used gets the first file; others fill empty cells.
+    const dest = first && target && cells.includes(target) ? target : cells.find((c) => !c.modelEl.value);
+    first = false;
+    if (dest) {
+      setModel(dest, `file:${id}`);
+      save();
+    }
   }
   fileEl.value = '';
 });
