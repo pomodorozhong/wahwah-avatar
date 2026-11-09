@@ -11,7 +11,7 @@ import { ControlFollower } from '../shared/host/follower';
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
 import localModels from 'virtual:local-models';
 import {
-  MAX_SIDE, STORAGE_KEY, clampSide, parseLayout, resizeLayout, serializeLayout, type Layout,
+  MAX_SIDE, STORAGE_KEY, clampSide, parseLayout, resizeLayout, serializeLayout, type CellState, type Layout,
 } from './layout';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -170,17 +170,31 @@ function showGrid(): void {
   highlight(cols, rows);
 }
 
-/** Apply a layout, keeping the cells (and their loaded models) whose row and column survive. */
+/** Choices of cells hidden by shrinking the grid, by `row,column`, so growing it again brings them back. */
+const hidden = new Map<string, CellState>();
+
+/** Change the grid size, keeping the cells (and their loaded models) whose row and column survive. */
 function applySize(newCols: number, newRows: number): void {
-  const resized = resizeLayout(currentLayout(), newCols, newRows);
+  const before = currentLayout();
+  const resized = resizeLayout(before, newCols, newRows);
   const kept: Cell[] = [];
   for (let r = 0; r < resized.rows; r++) {
     for (let c = 0; c < resized.cols; c++) {
       const old = r < rows && c < cols ? cells[r * cols + c] : undefined;
-      kept.push(old ?? makeCell(null, 'original'));
+      if (old) {
+        kept.push(old);
+        continue;
+      }
+      const back = hidden.get(`${r},${c}`);
+      hidden.delete(`${r},${c}`);
+      kept.push(makeCell(back?.model ?? null, back?.mouth ?? 'original'));
     }
   }
-  for (const cell of cells) if (!kept.includes(cell)) disposeCell(cell);
+  cells.forEach((cell, i) => {
+    if (kept.includes(cell)) return;
+    hidden.set(`${Math.floor(i / cols)},${i % cols}`, before.cells[i]);
+    disposeCell(cell);
+  });
   cells = kept;
   cols = resized.cols;
   rows = resized.rows;
@@ -311,6 +325,7 @@ for (const input of [colsEl, rowsEl]) {
   input.addEventListener('change', () => applySize(clampSide(colsEl.valueAsNumber), clampSide(rowsEl.valueAsNumber)));
 }
 byId('resetLayout').addEventListener('click', () => {
+  hidden.clear();
   for (const cell of cells) disposeCell(cell);
   try {
     localStorage.removeItem(STORAGE_KEY);
