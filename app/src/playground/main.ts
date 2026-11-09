@@ -11,7 +11,8 @@ import { ControlFollower } from '../shared/host/follower';
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
 import localModels from 'virtual:local-models';
 import {
-  MAX_SIDE, STORAGE_KEY, clampSide, parseLayout, resizeLayout, serializeLayout, type CellState, type Layout,
+  MAX_SIDE, PROFILES_KEY, STORAGE_KEY, clampSide, defaultLayout, parseProfiles, resizeLayout, serializeProfiles,
+  type CellState, type Layout, type Profiles,
 } from './layout';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -153,8 +154,9 @@ function currentLayout(): Layout {
 }
 
 function save(): void {
+  profiles.layouts[profiles.active] = currentLayout();
   try {
-    localStorage.setItem(STORAGE_KEY, serializeLayout(currentLayout()));
+    localStorage.setItem(PROFILES_KEY, serializeProfiles(profiles));
   } catch {
     // Storage can be blocked; the layout then lasts only for this visit.
   }
@@ -325,15 +327,10 @@ for (const input of [colsEl, rowsEl]) {
   input.addEventListener('change', () => applySize(clampSide(colsEl.valueAsNumber), clampSide(rowsEl.valueAsNumber)));
 }
 byId('resetLayout').addEventListener('click', () => {
-  hidden.clear();
-  for (const cell of cells) disposeCell(cell);
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing saved to clear.
-  }
-  loadLayout(null);
+  showLayout(defaultLayout());
+  save();
 });
+
 
 fileEl.addEventListener('change', () => {
   const target = pendingCell;
@@ -354,22 +351,62 @@ fileEl.addEventListener('change', () => {
   fileEl.value = '';
 });
 
-function loadLayout(text: string | null): void {
-  const layout = parseLayout(text, isKnownModel);
+/** Replace every cell with the ones a layout describes. */
+function showLayout(layout: Layout): void {
+  for (const cell of cells) disposeCell(cell);
+  hidden.clear();
   cols = layout.cols;
   rows = layout.rows;
   cells = layout.cells.map((c) => makeCell(c.model, c.mouth));
   showGrid();
 }
 
-function savedText(): string | null {
+function savedText(key: string): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-loadLayout(savedText());
+const profileEl = byId<HTMLSelectElement>('profile');
+const profiles: Profiles = parseProfiles(savedText(PROFILES_KEY), isKnownModel, savedText(STORAGE_KEY));
+
+function showProfiles(): void {
+  profileEl.replaceChildren(...Object.keys(profiles.layouts).map((name) => new Option(name, name)));
+  profileEl.value = profiles.active;
+  byId<HTMLButtonElement>('deleteProfile').disabled = Object.keys(profiles.layouts).length < 2;
+}
+
+profileEl.addEventListener('change', () => {
+  save();
+  profiles.active = profileEl.value;
+  showLayout(profiles.layouts[profiles.active]);
+  save();
+});
+byId('newProfile').addEventListener('click', () => {
+  const name = prompt('Name for the new profile (it starts as a copy of this layout):')?.trim();
+  if (!name) return;
+  if (name in profiles.layouts) {
+    alert(`A profile named "${name}" already exists.`);
+    return;
+  }
+  save();
+  profiles.layouts[name] = currentLayout();
+  profiles.active = name;
+  showProfiles();
+  save();
+});
+byId('deleteProfile').addEventListener('click', () => {
+  if (Object.keys(profiles.layouts).length < 2 || !confirm(`Delete the profile "${profiles.active}"? This cannot be undone.`)) return;
+  delete profiles.layouts[profiles.active];
+  profiles.active = Object.keys(profiles.layouts)[0];
+  showProfiles();
+  showLayout(profiles.layouts[profiles.active]);
+  save();
+});
+
+showProfiles();
+showLayout(profiles.layouts[profiles.active]);
 void loadVoices().then(() => (speakBtn.disabled = false));
 requestAnimationFrame(frame);

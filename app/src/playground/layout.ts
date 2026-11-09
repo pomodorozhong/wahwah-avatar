@@ -73,3 +73,41 @@ export function parseLayout(text: string | null, valid: (model: string) => boole
     return defaultLayout();
   }
 }
+
+export const PROFILES_KEY = 'wahwah-avatar.profiles.v1';
+export const DEFAULT_PROFILE = 'Default';
+
+/** Named layouts the user can switch between; the active one follows every edit. */
+export interface Profiles {
+  active: string;
+  layouts: Record<string, Layout>;
+}
+
+export function serializeProfiles(profiles: Profiles): string {
+  const layouts = Object.fromEntries(
+    Object.entries(profiles.layouts).map(([name, layout]) => [name, JSON.parse(serializeLayout(layout))]),
+  );
+  return JSON.stringify({ active: profiles.active, layouts });
+}
+
+/**
+ * Read saved profiles. `legacy` is the older single saved layout, which becomes
+ * the Default profile when no profiles were saved yet. Anything unreadable
+ * gives one Default profile.
+ */
+export function parseProfiles(text: string | null, valid: (model: string) => boolean, legacy: string | null = null): Profiles {
+  const fallback = (): Profiles => ({ active: DEFAULT_PROFILE, layouts: { [DEFAULT_PROFILE]: parseLayout(legacy, valid) } });
+  if (!text) return fallback();
+  try {
+    const data = JSON.parse(text) as { active?: unknown; layouts?: unknown };
+    if (typeof data.layouts !== 'object' || data.layouts === null || Array.isArray(data.layouts)) return fallback();
+    const layouts: Record<string, Layout> = {};
+    for (const [name, raw] of Object.entries(data.layouts)) layouts[name] = parseLayout(JSON.stringify(raw), valid);
+    const names = Object.keys(layouts);
+    if (names.length === 0) return fallback();
+    const active = typeof data.active === 'string' && data.active in layouts ? data.active : names[0];
+    return { active, layouts };
+  } catch {
+    return fallback();
+  }
+}

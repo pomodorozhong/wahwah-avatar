@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_SIDE, clampSide, defaultLayout, parseLayout, resizeLayout, serializeLayout, type Layout,
+  MAX_SIDE, clampSide, defaultLayout, parseLayout, parseProfiles, resizeLayout, serializeLayout, serializeProfiles, type Layout,
 } from '../src/playground/layout';
 
 const valid = (m: string) => m === 'tofu' || m === 'local:vrm/a.vrm';
@@ -66,5 +66,39 @@ describe('serializeLayout and parseLayout', () => {
     expect(loaded.cells).toHaveLength(MAX_SIDE);
     expect(loaded.cells[0]).toEqual({ model: 'tofu', mouth: 'original' });
     expect(loaded.cells[1].model).toBeNull();
+  });
+});
+
+describe('profiles', () => {
+  it('round-trips named layouts and the active one', () => {
+    const profiles = { active: 'Wide', layouts: { Default: defaultLayout(), Wide: resizeLayout(grid(), 3, 2) } };
+    const back = parseProfiles(serializeProfiles(profiles), valid);
+    expect(back.active).toBe('Wide');
+    expect(Object.keys(back.layouts)).toEqual(['Default', 'Wide']);
+    expect(back.layouts.Wide.cols).toBe(3);
+    expect(back.layouts.Wide.cells[1].model).toBe('local:vrm/a.vrm');
+  });
+
+  it('does not save a file opened from disk', () => {
+    const back = parseProfiles(serializeProfiles({ active: 'A', layouts: { A: grid() } }), (m) => valid(m) || m === 'file:1');
+    expect(back.layouts.A.cells[3].model).toBeNull();
+  });
+
+  it('turns the older single layout into the Default profile', () => {
+    const back = parseProfiles(null, valid, serializeLayout(grid()));
+    expect(back.active).toBe('Default');
+    expect(back.layouts.Default.cells[0].model).toBe('tofu');
+  });
+
+  it('falls back to one Default profile when the text is unreadable or empty', () => {
+    for (const text of ['nope', '{}', '{"layouts":{}}', '{"layouts":[]}']) {
+      const back = parseProfiles(text, valid);
+      expect(Object.keys(back.layouts)).toEqual(['Default']);
+    }
+  });
+
+  it('picks the first profile when the saved active one is missing', () => {
+    const text = JSON.stringify({ active: 'gone', layouts: { A: JSON.parse(serializeLayout(grid())) } });
+    expect(parseProfiles(text, valid).active).toBe('A');
   });
 });
