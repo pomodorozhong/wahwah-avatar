@@ -154,6 +154,8 @@ function showGrid(): void {
   grid.replaceChildren(...cells.map((c) => c.el));
   colsEl.value = String(cols);
   rowsEl.value = String(rows);
+  byId('layoutSize').textContent = `${cols} × ${rows}`;
+  highlight(cols, rows);
 }
 
 /** Apply a layout, keeping the cells (and their loaded models) whose row and column survive. */
@@ -243,6 +245,52 @@ function frame(now: number): void {
 // Pinch or ctrl+wheel would zoom the whole page; keep the layout fixed.
 window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, (e) => e.preventDefault());
+
+// Size picker: hover a square to preview columns × rows, click to apply.
+const pop = byId<HTMLElement>('layoutPop');
+const picker = byId<HTMLElement>('picker');
+const layoutBtn = byId<HTMLButtonElement>('layoutBtn');
+picker.style.gridTemplateColumns = `repeat(${MAX_SIDE}, 28px)`;
+for (let r = 1; r <= MAX_SIDE; r++) {
+  for (let c = 1; c <= MAX_SIDE; c++) {
+    const sq = document.createElement('i');
+    sq.dataset.c = String(c);
+    sq.dataset.r = String(r);
+    picker.append(sq);
+  }
+}
+function highlight(c: number, r: number): void {
+  for (const sq of picker.children as HTMLCollectionOf<HTMLElement>) {
+    sq.classList.toggle('on', Number(sq.dataset.c) <= c && Number(sq.dataset.r) <= r);
+  }
+  byId('popSize').textContent = `${c} × ${r}`;
+}
+picker.addEventListener('mouseover', (e) => {
+  const sq = e.target as HTMLElement;
+  if (sq.dataset.c) highlight(Number(sq.dataset.c), Number(sq.dataset.r));
+});
+picker.addEventListener('mouseleave', () => highlight(cols, rows));
+picker.addEventListener('click', (e) => {
+  const sq = e.target as HTMLElement;
+  if (sq.dataset.c) applySize(Number(sq.dataset.c), Number(sq.dataset.r));
+  closePop();
+});
+function closePop(): void {
+  pop.hidden = true;
+  layoutBtn.setAttribute('aria-expanded', 'false');
+}
+layoutBtn.addEventListener('click', () => {
+  if (!pop.hidden) return closePop();
+  const box = layoutBtn.getBoundingClientRect();
+  pop.style.top = `${box.bottom + 6}px`;
+  pop.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - 220))}px`;
+  pop.hidden = false;
+  layoutBtn.setAttribute('aria-expanded', 'true');
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!pop.hidden && !pop.contains(e.target as Node) && !layoutBtn.contains(e.target as Node)) closePop();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
 
 speakBtn.addEventListener('click', () => void speak());
 byId('stop').addEventListener('click', stop);

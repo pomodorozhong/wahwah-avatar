@@ -19,6 +19,15 @@
       button.primary { background:var(--accent); color:#1a1a1a; border-color:var(--accent); font-weight:600; }
       button:disabled { opacity:.5; cursor:default; }
       input[type=number] { width:3.5em; padding:5px 6px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font:inherit; }
+      #layoutPop { position:fixed; z-index:10; padding:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 28px #0008; display:grid; gap:10px; }
+      #layoutPop[hidden] { display:none; }
+      .pophead { display:flex; justify-content:space-between; gap:16px; align-items:baseline; font-size:12px; color:var(--dim); }
+      .pophead strong { color:#6aa6ff; font-size:15px; }
+      #picker { display:grid; gap:4px; }
+      #picker i { width:28px; height:28px; border-radius:5px; border:1px solid var(--line); background:#232a3d; cursor:pointer; }
+      #picker i.on { background:#2f6fe0; border-color:#2f6fe0; }
+      .popfoot { display:flex; gap:8px; align-items:center; color:var(--dim); border-top:1px solid var(--line); padding-top:10px; }
+      .popfoot .hint { font-size:12px; }
       #grid { flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:8px; padding:8px; }
       .panel { min-width:0; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; display:grid; grid-template-rows:auto minmax(0,1fr); }
       .panel .head { display:flex; gap:6px; align-items:center; padding:4px 8px; font-size:13px; color:var(--dim); }
@@ -35,12 +44,21 @@
       <button id="speak" class="primary" disabled>Speak</button>
       <button id="stop">Stop</button>
       <span class="sep"></span>
-      <label>Columns <input id="cols" type="number" min="1" max="4" value="2" /></label>
-      <label>Rows <input id="rows" type="number" min="1" max="4" value="1" /></label>
+      <button id="layoutBtn" aria-haspopup="true" aria-expanded="false">Layout <span id="layoutSize">2 × 1</span> ▾</button>
       <button id="resetLayout">Reset layout</button>
       <button id="addFile" title="Files you open stay in your browser and are not saved with the layout. Models in app/public/models/ appear in each cell's model menu on your own machine and are never published.">Open .vrm file…</button>
       <input id="file" type="file" accept=".vrm" hidden />
     </header>
+    <div id="layoutPop" role="dialog" aria-label="Grid size" hidden>
+      <div class="pophead"><strong id="popSize">2 × 1</strong><span>columns × rows</span></div>
+      <div id="picker"></div>
+      <div class="popfoot">
+        <input id="cols" type="number" min="1" max="4" value="2" aria-label="Columns" />
+        <span>×</span>
+        <input id="rows" type="number" min="1" max="4" value="1" aria-label="Rows" />
+        <span class="hint">or click a square</span>
+      </div>
+    </div>
     <main id="grid"></main>
     <script type="module" src="/src/playground/main.ts"></script>
   </body>
