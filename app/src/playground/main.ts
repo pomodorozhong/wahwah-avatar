@@ -150,6 +150,7 @@ function save(): void {
 
 function showGrid(): void {
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
   grid.replaceChildren(...cells.map((c) => c.el));
   colsEl.value = String(cols);
   rowsEl.value = String(rows);
@@ -238,6 +239,10 @@ function frame(now: number): void {
   }
   requestAnimationFrame(frame);
 }
+
+// Pinch or ctrl+wheel would zoom the whole page; keep the layout fixed.
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, (e) => e.preventDefault());
 
 speakBtn.addEventListener('click', () => void speak());
 byId('stop').addEventListener('click', stop);
