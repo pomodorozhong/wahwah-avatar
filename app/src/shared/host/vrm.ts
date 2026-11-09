@@ -9,6 +9,8 @@ import type { FaceHost } from './host';
 import { Blinker, controlsToVrmVisemes } from './mappings';
 import { FaceNavigation } from './faceNavigation';
 import { StudyMotion } from './studyMotion';
+import { PuppetMouth } from './puppetMouth';
+import type { MouthMode } from './mouthPlan';
 
 /** Vertical extent of the framed face, in metres. */
 const FRAME_HEIGHT = 0.42;
@@ -19,7 +21,11 @@ export class VrmFace implements FaceHost {
   readonly camera = new THREE.PerspectiveCamera(20, 1, 0.05, 20);
   readonly navigation = new FaceNavigation(this.camera);
   idleMotion = true;
-  status = 'Choose a VRM model.';
+  /** How the mouth is drawn; only the sample model has replacements (see `puppetMouth`). */
+  mouthMode: MouthMode = 'original';
+  /** Set when the loaded model is the sample the replacement mouths were cut for. */
+  puppetMouth?: PuppetMouth;
+  status ='Choose a VRM model.';
   private vrm: VRM | null = null;
   private readonly focus = new THREE.Vector3(0, 1.4, 0);
   private readonly blinker = new Blinker();
@@ -74,6 +80,7 @@ export class VrmFace implements FaceHost {
         VRMUtils.deepDispose(this.vrm.scene);
       }
       this.vrm = vrm;
+      this.puppetMouth = isTofu ? undefined : PuppetMouth.forModel(vrm);
       this.stage.add(vrm.scene);
       if (vrm.lookAt) vrm.lookAt.target = this.camera;
       vrm.update(0);
@@ -135,10 +142,11 @@ export class VrmFace implements FaceHost {
     }
   }
 
-  private applyMouth(): void {
+  private applyMouth(dtSeconds: number): void {
     const em = this.vrm?.expressionManager;
+    const controls = this.puppetMouth?.pose(this.mouthMode, this.controls, dtSeconds) ?? this.controls;
     let angle = 0;
-    for (const [name, w] of Object.entries(controlsToVrmVisemes(this.controls))) {
+    for (const [name, w] of Object.entries(controlsToVrmVisemes(controls))) {
       em?.setValue(name, w);
       angle += (this.jawAngles.get(name) ?? 0) * w;
     }
@@ -155,7 +163,7 @@ export class VrmFace implements FaceHost {
     this.poseClock += dtSeconds;
     const expose = !fps || dtSeconds === 0 || this.poseClock >= 1/fps;
     if (expose) {
-      this.applyMouth();
+      this.applyMouth(dtSeconds);
       if (this.body) {
         const expressions = this.vrm.expressionManager;
         expressions?.setValue('drive', this.body.drive);

@@ -7,6 +7,7 @@ import { Player } from '../shared/playback';
 import * as THREE from 'three';
 import { VrmFace } from '../shared/host/vrm';
 import { ControlFollower } from '../shared/host/follower';
+import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
 import localModels from 'virtual:local-models';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -25,6 +26,7 @@ interface Panel {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   statusEl: HTMLElement;
+  mouthEl: HTMLSelectElement;
   dispose(): void;
 }
 
@@ -55,8 +57,10 @@ let seed = 1;
 function addPanel(source: { url: string; label: string; tofu: boolean; revoke?: boolean }): void {
   const el = document.createElement('section');
   el.className = 'panel';
-  el.innerHTML = '<div class="head"><span></span><button type="button">Remove</button></div><div class="stageview"><div class="status"></div></div>';
+  el.innerHTML = '<div class="head"><span></span><select aria-label="Mouth" hidden></select><button type="button">Remove</button></div><div class="stageview"><div class="status"></div></div>';
   const [labelEl, removeBtn] = [el.querySelector('span')!, el.querySelector('button')!];
+  const mouthEl = el.querySelector('select')!;
+  mouthEl.replaceChildren(...Object.entries(mouthModes).map(([mode, label]) => new Option(label, mode)));
   const view = el.querySelector<HTMLElement>('.stageview')!;
   const statusEl = view.querySelector<HTMLElement>('.status')!;
   const canvas = document.createElement('canvas');
@@ -66,11 +70,13 @@ function addPanel(source: { url: string; label: string; tofu: boolean; revoke?: 
 
   const host = new VrmFace();
   host.navigation.connect(canvas);
+  mouthEl.addEventListener('change', () => (host.mouthMode = mouthEl.value as MouthMode));
   const panel: Panel = {
     host,
     canvas,
     ctx: canvas.getContext('2d')!,
     statusEl,
+    mouthEl,
     dispose() {
       host.navigation.dispose();
       if (source.revoke) URL.revokeObjectURL(source.url);
@@ -119,6 +125,7 @@ function frame(now: number): void {
     panel.host.setControls(follower.controls);
     renderPanel(panel, dt);
     panel.statusEl.textContent = panel.host.status;
+    panel.mouthEl.hidden = !panel.host.puppetMouth;
   }
   requestAnimationFrame(frame);
 }
