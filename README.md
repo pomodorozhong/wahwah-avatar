@@ -13,7 +13,7 @@ The `wahwah` package comes from a [release tarball](https://github.com/pomodoroz
 
 ### Replacement mouths
 
-A panel showing the VRoid "Constraint Twist" sample (`VRM1_Constraint_Twist_Sample.vrm`) gets a **Mouth** menu. **Replacement mouths** draws one of five cut-paper mouths in place of the model's own, held for a twelfth of a second. **Gesture-driven replacements** picks the drawing from the syllable rhythm. Other models and Tofu have no menu. The sample is not in this repository.
+A panel showing the VRoid "Constraint Twist" sample (`VRM1_Constraint_Twist_Sample.vrm`) gets a **Mouth** menu. **Replacement mouths** draws one of five cut-paper mouths in place of the model's own, held for a twelfth of a second. **Gesture-driven replacements** picks the drawing from the syllable rhythm. Four more modes change the model's own mouth with shader patches: **Sculpted lips** (a crisp seal and broader tooth-bearing spread), **Ink contour** (an outlined mouth drawn on the skin), **Hinged jaw** (the chin tips on a hinge) and **Gesture replay** (frames traced from a reference animation, stretched to each syllable). Other models and Tofu have no menu. The sample is not in this repository.
 
 ## Checks
 

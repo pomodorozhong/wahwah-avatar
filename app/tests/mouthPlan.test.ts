@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   GestureReplay, PLATE_CLOSED, PLATE_HOLD, PLATE_MID, PLATE_OPEN, PLATE_ROUND, PLATE_WIDE,
-  PlateHold, grinFrames, mouthModes, plateIndex, replayPlates, roundFrames,
+  PlateHold, blendControls, gestureScale, grinFrames, hingeAngle, hingeControls, mouthModes, plateIndex, replayPlates, roundFrames,
 } from '../src/shared/host/mouthPlan';
 
 const c = (jawOpen: number, lipWidth = 0, lipRound = 0) => ({ jawOpen, lipWidth, lipRound });
@@ -53,8 +53,42 @@ describe('GestureReplay', () => {
   });
 });
 
+describe('blendControls', () => {
+  it('keeps a closed mouth closed', () => {
+    expect(blendControls(c(0))).toEqual({ jawOpen: 0, lipRound: 0, lipWidth: 0 });
+  });
+
+  it('never lets the lips spread past what rounding leaves free', () => {
+    for (const round of [0, 0.25, 1]) {
+      const out = blendControls(c(1, 1, round));
+      expect(out.lipWidth + out.lipRound).toBeLessThanOrEqual(1 + 1e-9);
+      expect(out.jawOpen).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('hinge mode', () => {
+  it('shares the opening between the morphs and the hinge', () => {
+    expect(hingeControls(c(1, 1, 1))).toEqual({ jawOpen: 0.7, lipWidth: 0.45, lipRound: 0.45 });
+    expect(hingeAngle(c(0))).toBe(0);
+    expect(hingeAngle(c(1))).toBeCloseTo(0.2);
+  });
+});
+
+describe('gestureScale', () => {
+  it('grows from a soft to a full syllable', () => {
+    expect(gestureScale(c(0))).toBeCloseTo(0.57);
+    expect(gestureScale(c(1))).toBeCloseTo(1);
+    expect(gestureScale(c(0.25))).toBeGreaterThan(gestureScale(c(0.04)));
+  });
+});
+
 describe('mouthModes', () => {
   it('lists the original mouth first', () => {
     expect(Object.keys(mouthModes)[0]).toBe('original');
+  });
+
+  it('names every mode the playground can pick', () => {
+    expect(Object.keys(mouthModes)).toEqual(['original', 'plates', 'gesturePlates', 'blend', 'contour', 'hinge', 'gesture']);
   });
 });
