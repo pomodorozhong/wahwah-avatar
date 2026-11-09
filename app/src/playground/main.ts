@@ -11,17 +11,17 @@ import { ControlFollower } from '../shared/host/follower';
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
 import localModels from 'virtual:local-models';
 import {
-  MAX_SIDE, PROFILES_KEY, STORAGE_KEY, clampSide, defaultLayout, parseProfiles, resizeLayout, serializeProfiles,
+  MAX_SIDE, PROFILES_KEY, STORAGE_KEY, defaultLayout, parseProfiles, resizeLayout, serializeProfiles,
   type CellState, type Layout, type Profiles,
 } from './layout';
+import { closeMenu, openMenu, type MenuItem } from './menu';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = byId<HTMLElement>('grid');
 const textEl = byId<HTMLInputElement>('text');
 const speakBtn = byId<HTMLButtonElement>('speak');
 const fileEl = byId<HTMLInputElement>('file');
-const colsEl = byId<HTMLInputElement>('cols');
-const rowsEl = byId<HTMLInputElement>('rows');
+const layoutBtn = byId<HTMLButtonElement>('layoutBtn');
 
 // Browsers cap live WebGL contexts (about 16, fewer on some), and the oldest
 // is lost when the cap is hit. So every cell shares one offscreen renderer
@@ -72,6 +72,9 @@ interface Cell {
   el: HTMLElement;
   modelEl: HTMLSelectElement;
   mouthEl: HTMLSelectElement;
+  modelChip: HTMLButtonElement;
+  mouthChip: HTMLButtonElement;
+  hintEl: HTMLElement;
   statusEl: HTMLElement;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -86,18 +89,23 @@ function makeCell(model: string | null, mouth: MouthMode): Cell {
   const el = document.createElement('section');
   el.className = 'panel';
   el.innerHTML =
-    '<div class="head"><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth" hidden></select></div>' +
-    '<div class="stageview"><div class="status"></div></div>';
+    '<div class="chips">' +
+    '<button type="button" class="pill" aria-haspopup="menu" aria-expanded="false"></button>' +
+    '<button type="button" class="chip mouth-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
+    '</div><div class="hint">Choose a model</div><div class="status"></div>' +
+    '<div class="state" hidden><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth"></select></div>';
   const modelEl = el.querySelector<HTMLSelectElement>('.model')!;
   const mouthEl = el.querySelector<HTMLSelectElement>('.mouth')!;
-  const view = el.querySelector<HTMLElement>('.stageview')!;
   const canvas = document.createElement('canvas');
-  view.prepend(canvas);
+  el.prepend(canvas);
   mouthEl.replaceChildren(...Object.entries(mouthModes).map(([m, label]) => new Option(label, m)));
   mouthEl.value = mouth;
   const cell: Cell = {
     el, modelEl, mouthEl, canvas,
-    statusEl: view.querySelector<HTMLElement>('.status')!,
+    modelChip: el.querySelector<HTMLButtonElement>('.pill')!,
+    mouthChip: el.querySelector<HTMLButtonElement>('.mouth-chip')!,
+    hintEl: el.querySelector<HTMLElement>('.hint')!,
+    statusEl: el.querySelector<HTMLElement>('.status')!,
     ctx: canvas.getContext('2d')!,
     host: null,
   };
@@ -116,8 +124,42 @@ function makeCell(model: string | null, mouth: MouthMode): Cell {
     if (cell.host) cell.host.mouthMode = mouthEl.value as MouthMode;
     save();
   });
+  for (const [chip, select] of [[cell.modelChip, modelEl], [cell.mouthChip, mouthEl]] as const) {
+    chip.addEventListener('click', () => openMenu(chip, selectItems(select, () => refreshChips(cell))));
+  }
   setModel(cell, model);
+  refreshChips(cell);
   return cell;
+}
+
+/** The menu rows for a select: its options, with the chosen one checked. */
+function selectItems(select: HTMLSelectElement, after: () => void): MenuItem[] {
+  const items: MenuItem[] = [];
+  for (const option of select.options) {
+    if (option.value === OPEN) items.push({ divider: true });
+    items.push({
+      label: option.text,
+      selected: option.value === select.value,
+      accent: option.value === OPEN,
+      onPick: () => {
+        select.value = option.value;
+        select.dispatchEvent(new Event('change'));
+        after();
+      },
+    });
+  }
+  return items;
+}
+
+/** Make a cell's chips show its current choices; the selects hold the state. */
+function refreshChips(cell: Cell): void {
+  const set = (el: HTMLElement, text: string) => {
+    if (el.textContent !== text) el.textContent = text;
+  };
+  set(cell.modelChip, `${cell.modelEl.selectedOptions[0]?.text ?? 'Empty'} ▾`);
+  set(cell.mouthChip, `${cell.mouthEl.selectedOptions[0]?.text ?? ''} ▾`);
+  cell.mouthChip.hidden = cell.mouthEl.hidden;
+  cell.hintEl.hidden = !!cell.modelEl.value;
 }
 
 function setModel(cell: Cell, model: string | null): void {
@@ -166,10 +208,7 @@ function showGrid(): void {
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
   grid.replaceChildren(...cells.map((c) => c.el));
-  colsEl.value = String(cols);
-  rowsEl.value = String(rows);
-  byId('layoutSize').textContent = `${cols} × ${rows}`;
-  highlight(cols, rows);
+  updateLayoutButton();
 }
 
 /** Choices of cells hidden by shrinking the grid, by `row,column`, so growing it again brings them back. */
@@ -266,6 +305,7 @@ function frame(now: number): void {
     renderCell(cell, dt);
     cell.statusEl.textContent = cell.host.status;
     cell.mouthEl.hidden = !cell.host.puppetMouth;
+    refreshChips(cell);
   }
   requestAnimationFrame(frame);
 }
@@ -274,63 +314,107 @@ function frame(now: number): void {
 window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, (e) => e.preventDefault());
 
-// Size picker: hover a square to preview columns × rows, click to apply.
-const pop = byId<HTMLElement>('layoutPop');
-const picker = byId<HTMLElement>('picker');
-const layoutBtn = byId<HTMLButtonElement>('layoutBtn');
-picker.style.gridTemplateColumns = `repeat(${MAX_SIDE}, 28px)`;
-for (let r = 1; r <= MAX_SIDE; r++) {
-  for (let c = 1; c <= MAX_SIDE; c++) {
-    const sq = document.createElement('i');
-    sq.dataset.c = String(c);
-    sq.dataset.r = String(r);
-    picker.append(sq);
-  }
-}
-function highlight(c: number, r: number): void {
-  for (const sq of picker.children as HTMLCollectionOf<HTMLElement>) {
-    sq.classList.toggle('on', Number(sq.dataset.c) <= c && Number(sq.dataset.r) <= r);
-  }
-  byId('popSize').textContent = `${c} × ${r}`;
-}
-picker.addEventListener('mouseover', (e) => {
-  const sq = e.target as HTMLElement;
-  if (sq.dataset.c) highlight(Number(sq.dataset.c), Number(sq.dataset.r));
-});
-picker.addEventListener('mouseleave', () => highlight(cols, rows));
-picker.addEventListener('click', (e) => {
-  const sq = e.target as HTMLElement;
-  if (sq.dataset.c) applySize(Number(sq.dataset.c), Number(sq.dataset.r));
-  closePop();
-});
-function closePop(): void {
-  pop.hidden = true;
-  layoutBtn.setAttribute('aria-expanded', 'false');
-}
-layoutBtn.addEventListener('click', () => {
-  if (!pop.hidden) return closePop();
-  const box = layoutBtn.getBoundingClientRect();
-  pop.style.top = `${box.bottom + 6}px`;
-  pop.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - 220))}px`;
-  pop.hidden = false;
-  layoutBtn.setAttribute('aria-expanded', 'true');
-});
-document.addEventListener('pointerdown', (e) => {
-  if (!pop.hidden && !pop.contains(e.target as Node) && !layoutBtn.contains(e.target as Node)) closePop();
-});
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
-
 speakBtn.addEventListener('click', () => void speak());
 byId('stop').addEventListener('click', stop);
-colsEl.max = rowsEl.max = String(MAX_SIDE);
-for (const input of [colsEl, rowsEl]) {
-  input.addEventListener('change', () => applySize(clampSide(colsEl.valueAsNumber), clampSide(rowsEl.valueAsNumber)));
-}
-byId('resetLayout').addEventListener('click', () => {
-  showLayout(defaultLayout());
-  save();
-});
 
+function updateLayoutButton(): void {
+  layoutBtn.textContent = `${profiles.active} · ${cols} × ${rows} ▾`;
+}
+
+/** Squares for the grid size: hover to preview columns × rows, click to apply. */
+function sizePicker(): HTMLElement {
+  const wrap = document.createElement('div');
+  const label = document.createElement('div');
+  label.className = 'heading';
+  const squares = document.createElement('div');
+  squares.className = 'sq';
+  const all: HTMLElement[] = [];
+  for (let r = 1; r <= MAX_SIDE; r++) {
+    for (let c = 1; c <= MAX_SIDE; c++) {
+      const sq = document.createElement('i');
+      sq.dataset.c = String(c);
+      sq.dataset.r = String(r);
+      all.push(sq);
+      squares.append(sq);
+    }
+  }
+  const show = (c: number, r: number) => {
+    label.textContent = `Grid size · ${c} × ${r}`;
+    for (const sq of all) sq.classList.toggle('on', Number(sq.dataset.c) <= c && Number(sq.dataset.r) <= r);
+  };
+  show(cols, rows);
+  squares.addEventListener('mouseover', (e) => {
+    const sq = e.target as HTMLElement;
+    if (sq.dataset.c) show(Number(sq.dataset.c), Number(sq.dataset.r));
+  });
+  squares.addEventListener('mouseleave', () => show(cols, rows));
+  squares.addEventListener('click', (e) => {
+    const sq = e.target as HTMLElement;
+    if (!sq.dataset.c) return;
+    closeMenu();
+    applySize(Number(sq.dataset.c), Number(sq.dataset.r));
+  });
+  wrap.append(label, squares);
+  return wrap;
+}
+
+function switchProfile(name: string): void {
+  save();
+  profiles.active = name;
+  showLayout(profiles.layouts[name]);
+  save();
+}
+
+function newProfile(): void {
+  const name = prompt('Name for the new profile (it starts as a copy of this layout):')?.trim();
+  if (!name) return;
+  if (name in profiles.layouts) {
+    alert(`A profile named "${name}" already exists.`);
+    return;
+  }
+  save();
+  profiles.layouts[name] = currentLayout();
+  profiles.active = name;
+  updateLayoutButton();
+  save();
+}
+
+function deleteProfile(name: string): void {
+  if (!confirm(`Delete the profile "${name}"? This cannot be undone.`)) return;
+  closeMenu();
+  const wasActive = name === profiles.active;
+  delete profiles.layouts[name];
+  if (wasActive) {
+    profiles.active = Object.keys(profiles.layouts)[0];
+    showLayout(profiles.layouts[profiles.active]);
+  }
+  updateLayoutButton();
+  save();
+}
+
+layoutBtn.addEventListener('click', () => {
+  const names = Object.keys(profiles.layouts);
+  openMenu(layoutBtn, [
+    { heading: 'Profiles' },
+    ...names.map((name): MenuItem => ({
+      label: `${name} · ${profiles.layouts[name].cols} × ${profiles.layouts[name].rows}`,
+      selected: name === profiles.active,
+      onPick: () => name !== profiles.active && switchProfile(name),
+      onRemove: names.length > 1 ? () => deleteProfile(name) : undefined,
+    })),
+    { label: 'New profile…', accent: true, onPick: newProfile },
+    { divider: true },
+    { node: sizePicker() },
+    { divider: true },
+    {
+      label: 'Reset this profile',
+      onPick: () => {
+        showLayout(defaultLayout());
+        save();
+      },
+    },
+  ]);
+});
 
 fileEl.addEventListener('change', () => {
   const target = pendingCell;
@@ -369,44 +453,8 @@ function savedText(key: string): string | null {
   }
 }
 
-const profileEl = byId<HTMLSelectElement>('profile');
 const profiles: Profiles = parseProfiles(savedText(PROFILES_KEY), isKnownModel, savedText(STORAGE_KEY));
 
-function showProfiles(): void {
-  profileEl.replaceChildren(...Object.keys(profiles.layouts).map((name) => new Option(name, name)));
-  profileEl.value = profiles.active;
-  byId<HTMLButtonElement>('deleteProfile').disabled = Object.keys(profiles.layouts).length < 2;
-}
-
-profileEl.addEventListener('change', () => {
-  save();
-  profiles.active = profileEl.value;
-  showLayout(profiles.layouts[profiles.active]);
-  save();
-});
-byId('newProfile').addEventListener('click', () => {
-  const name = prompt('Name for the new profile (it starts as a copy of this layout):')?.trim();
-  if (!name) return;
-  if (name in profiles.layouts) {
-    alert(`A profile named "${name}" already exists.`);
-    return;
-  }
-  save();
-  profiles.layouts[name] = currentLayout();
-  profiles.active = name;
-  showProfiles();
-  save();
-});
-byId('deleteProfile').addEventListener('click', () => {
-  if (Object.keys(profiles.layouts).length < 2 || !confirm(`Delete the profile "${profiles.active}"? This cannot be undone.`)) return;
-  delete profiles.layouts[profiles.active];
-  profiles.active = Object.keys(profiles.layouts)[0];
-  showProfiles();
-  showLayout(profiles.layouts[profiles.active]);
-  save();
-});
-
-showProfiles();
 showLayout(profiles.layouts[profiles.active]);
 void loadVoices().then(() => (speakBtn.disabled = false));
 requestAnimationFrame(frame);
