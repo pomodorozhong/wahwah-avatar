@@ -4,8 +4,14 @@ How the pieces fit together. For what this repository owns and what it does not,
 
 ## The flow
 
-```
-text ──► wahwah ──► audio + FaceControlTrack ──► playback clock ──► follower ──► face host ──► picture
+```mermaid
+flowchart LR
+    text([text]) --> wahwah[wahwah]
+    wahwah --> utterance["audio + FaceControlTrack"]
+    utterance --> clock[playback clock]
+    clock --> follower[follower]
+    follower --> host[face host]
+    host --> picture([picture])
 ```
 
 1. **wahwah** (the `wahwah` package) turns text into a rendered utterance: audio, plus a `FaceControlTrack` that says how the face should move over time. This repository does not make speech or timing.
