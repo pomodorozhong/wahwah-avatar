@@ -9,6 +9,9 @@ import * as THREE from 'three';
 import { VrmFace } from '../shared/host/vrm';
 import { ControlFollower } from '../shared/host/follower';
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
+import { inkMethods, type InkMethod } from '../shared/host/inkMethods';
+import { InkDitherPass } from '../shared/host/inkDither';
+import { ComicPrintPass } from '../shared/host/comicPrint';
 import localModels from 'virtual:local-models';
 import {
   MAX_SIDE, PROFILES_KEY, STORAGE_KEY, defaultLayout, parseProfiles, resizeLayout, serializeProfiles,
@@ -27,6 +30,9 @@ const layoutBtn = byId<HTMLButtonElement>('layoutBtn');
 // is lost when the cap is hit. So every cell shares one offscreen renderer
 // and copies its frame onto its own 2D canvas.
 const gl = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+// Full-screen style passes, shared like the renderer; each draws into `gl` before its cell copies the frame.
+const inkPass = new InkDitherPass();
+const comicPass = new ComicPrintPass();
 
 const TOFU_URL = `${import.meta.env.BASE_URL}tofu/corner-cut.vrm`;
 /** Menu entry that opens the file picker instead of choosing a model. */
@@ -74,6 +80,8 @@ interface Cell {
   mouthEl: HTMLSelectElement;
   modelChip: HTMLButtonElement;
   mouthChip: HTMLButtonElement;
+  inkEl: HTMLSelectElement;
+  inkChip: HTMLButtonElement;
   hintEl: HTMLElement;
   statusEl: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -85,25 +93,30 @@ let cells: Cell[] = [];
 let cols = 1;
 let rows = 1;
 
-function makeCell(model: string | null, mouth: MouthMode): Cell {
+function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod): Cell {
   const el = document.createElement('section');
   el.className = 'panel';
   el.innerHTML =
     '<div class="chips">' +
     '<button type="button" class="pill" aria-haspopup="menu" aria-expanded="false"></button>' +
     '<button type="button" class="chip mouth-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
+    '<button type="button" class="chip ink-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
     '</div><div class="hint">Choose a model</div><div class="status"></div>' +
-    '<div class="state" hidden><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth"></select></div>';
+    '<div class="state" hidden><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth"></select><select class="ink" aria-label="Ink dither"></select></div>';
   const modelEl = el.querySelector<HTMLSelectElement>('.model')!;
   const mouthEl = el.querySelector<HTMLSelectElement>('.mouth')!;
+  const inkEl = el.querySelector<HTMLSelectElement>('.ink')!;
   const canvas = document.createElement('canvas');
   el.prepend(canvas);
   mouthEl.replaceChildren(...Object.entries(mouthModes).map(([m, label]) => new Option(label, m)));
   mouthEl.value = mouth;
+  inkEl.replaceChildren(...Object.entries(inkMethods).map(([m, { label }]) => new Option(label, m)));
+  inkEl.value = ink;
   const cell: Cell = {
-    el, modelEl, mouthEl, canvas,
+    el, modelEl, mouthEl, inkEl, canvas,
     modelChip: el.querySelector<HTMLButtonElement>('.pill')!,
     mouthChip: el.querySelector<HTMLButtonElement>('.mouth-chip')!,
+    inkChip: el.querySelector<HTMLButtonElement>('.ink-chip')!,
     hintEl: el.querySelector<HTMLElement>('.hint')!,
     statusEl: el.querySelector<HTMLElement>('.status')!,
     ctx: canvas.getContext('2d')!,
@@ -124,7 +137,8 @@ function makeCell(model: string | null, mouth: MouthMode): Cell {
     if (cell.host) cell.host.mouthMode = mouthEl.value as MouthMode;
     save();
   });
-  for (const [chip, select] of [[cell.modelChip, modelEl], [cell.mouthChip, mouthEl]] as const) {
+  inkEl.addEventListener('change', save);
+  for (const [chip, select] of [[cell.modelChip, modelEl], [cell.mouthChip, mouthEl], [cell.inkChip, inkEl]] as const) {
     chip.addEventListener('click', () => openMenu(chip, selectItems(select, () => refreshChips(cell))));
   }
   setModel(cell, model);
@@ -159,6 +173,8 @@ function refreshChips(cell: Cell): void {
   set(cell.modelChip, `${cell.modelEl.selectedOptions[0]?.text ?? 'Empty'} ▾`);
   set(cell.mouthChip, `${cell.mouthEl.selectedOptions[0]?.text ?? ''} ▾`);
   cell.mouthChip.hidden = cell.mouthEl.hidden;
+  set(cell.inkChip, `${cell.inkEl.selectedOptions[0]?.text ?? ''} ▾`);
+  cell.inkChip.hidden = cell.inkEl.hidden;
   cell.hintEl.hidden = !!cell.modelEl.value;
 }
 
@@ -167,6 +183,7 @@ function setModel(cell: Cell, model: string | null): void {
   cell.host = null;
   cell.statusEl.textContent = '';
   cell.mouthEl.hidden = true;
+  cell.inkEl.hidden = true;
   cell.ctx.clearRect(0, 0, cell.canvas.width, cell.canvas.height);
   cell.modelEl.value = model ?? '';
   cell.modelEl.dataset.prev = cell.modelEl.value;
@@ -191,7 +208,7 @@ function disposeCell(cell: Cell): void {
 function currentLayout(): Layout {
   return {
     cols, rows,
-    cells: cells.map((c) => ({ model: c.modelEl.value || null, mouth: c.mouthEl.value as MouthMode })),
+    cells: cells.map((c) => ({ model: c.modelEl.value || null, mouth: c.mouthEl.value as MouthMode, ink: c.inkEl.value as InkMethod })),
   };
 }
 
@@ -228,7 +245,7 @@ function applySize(newCols: number, newRows: number): void {
       }
       const back = hidden.get(`${r},${c}`);
       hidden.delete(`${r},${c}`);
-      kept.push(makeCell(back?.model ?? null, back?.mouth ?? 'original'));
+      kept.push(makeCell(back?.model ?? null, back?.mouth ?? 'original', back?.ink ?? 'bayer'));
     }
   }
   cells.forEach((cell, i) => {
@@ -258,7 +275,9 @@ function renderCell(cell: Cell, dt: number): void {
   gl.setPixelRatio(1);
   gl.setSize(width, height, false);
   host.update(dt);
-  gl.render(host.scene, host.camera);
+  if (host.renderStyle === 'ink-dither') inkPass.render(gl, host, width, height, cell.inkEl.value as InkMethod);
+  else if (host.renderStyle === 'comic-print') comicPass.render(gl, host, width, height);
+  else gl.render(host.scene, host.camera);
   cell.ctx.drawImage(gl.domElement, 0, 0);
 }
 
@@ -305,6 +324,7 @@ function frame(now: number): void {
     renderCell(cell, dt);
     cell.statusEl.textContent = cell.host.status;
     cell.mouthEl.hidden = !cell.host.puppetMouth;
+    cell.inkEl.hidden = cell.host.renderStyle !== 'ink-dither';
     refreshChips(cell);
   }
   requestAnimationFrame(frame);
@@ -441,7 +461,7 @@ function showLayout(layout: Layout): void {
   hidden.clear();
   cols = layout.cols;
   rows = layout.rows;
-  cells = layout.cells.map((c) => makeCell(c.model, c.mouth));
+  cells = layout.cells.map((c) => makeCell(c.model, c.mouth, c.ink));
   showGrid();
 }
 
