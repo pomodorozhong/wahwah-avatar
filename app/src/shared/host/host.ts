@@ -1,5 +1,6 @@
 // Face host interface: anything that can turn FaceControls into a picture.
-// Every host draws with the one shared Three.js renderer (see renderer.ts), so
+// Every host draws with the one shared Three.js renderer (created in
+// playground/main.ts), so
 // switching faces never creates a second WebGL context.
 
 import type * as THREE from 'three';
