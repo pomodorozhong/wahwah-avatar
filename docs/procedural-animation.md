@@ -14,6 +14,12 @@ Nothing in the file says when to move. The code decides that, every frame, from 
 
 Animation made this way, by code at runtime from rules and inputs, is called procedural animation. The spring bones are a second case: the file stores their settings, and a physics step moves them live.
 
+The mouth is not the only part that moves this way:
+
+- **Blinking:** every VRM model blinks at random intervals.
+- **Idle sway:** every model except Tofu sways its neck slowly.
+- **Tofu's acting:** Tofu glances aside at the start of a phrase, then looks at the listener, lifts its brows on accents and leans into effort, with a slow breath underneath. Like the spring bones, the file stores only the timing settings, and the code moves the face live.
+
 ## Why not store it in the model
 
 - **Speech is not known ahead of time.** A recorded clip plays the same way for "hello" and for a long sentence. Each utterance here has its own timing, so the mouth has to follow it.
@@ -33,9 +39,14 @@ A model that does not match, such as Tofu, gets no Mouth menu. Without the sampl
 
 ## Where things live
 
-- Timing and control mappings with no Three.js types, so they are unit tested: `app/src/shared/host/mouthPlan.ts`.
-- The traced frames used by Gesture replay: `mouthPlan.ts` (drawn by `referenceMouth.ts`).
-- The shader patches and cut-paper drawings: `app/src/shared/host/puppetMouth.ts`. These have no automated test; they are checked by running the playground.
+All of it is in `app/src/shared/host/`, next to the host code and the visual styles; [architecture.md](architecture.md#inside-the-face-host) sorts that folder by kind.
+
+- Following the speech and easing back to neutral: `follower.ts`. The playground runs one follower for every cell.
+- Mouth timing, which replacement to show and when: `mouthPlan.ts`. It has no Three.js types, so it is unit tested.
+- The traced frames used by Gesture replay: their timing is in `mouthPlan.ts`, and `referenceMouth.ts` draws them.
+- The shader patches and cut-paper drawings: `puppetMouth.ts`. These have no automated test; they are checked by running the playground.
+- Tofu's gaze, brows and body drive: `studyMotion.ts`. Its timing settings come from Tofu's file, written by `tools/tofu/build.mjs`. The breath it adds to the body drive is computed in `vrm.ts`.
+- Blink timing: `Blinker` in `mappings.ts` (unit tested). The neck sway: `vrm.ts`.
 
 ## How common this is
 
