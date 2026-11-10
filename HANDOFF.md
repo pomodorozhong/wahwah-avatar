@@ -5,17 +5,16 @@
 ### docs/architecture-docs
 
 - Task: two docs pages, [architecture.md](docs/architecture.md) and [procedural-animation.md](docs/procedural-animation.md), for [#11](https://github.com/pomodorozhong/wahwah-avatar/issues/11). The commits say `Related to #11`. The branch is not linked to the issue, since the PR will not resolve it.
-- PR: none yet. Not pushed.
+- PR: [#12](https://github.com/pomodorozhong/wahwah-avatar/pull/12), open. Its last code commit is `fcbb1e5`, which draws the flow in `architecture.md` as a Mermaid diagram (checked: it parses and renders with Mermaid 11). Its body says `Related to #11` and closes no issue (checked: `closingIssuesReferences` is empty). Auto-fix is on.
 - Code checkpoint: `4021106`, rebased on `main` at `1f919a4` (after [#9](https://github.com/pomodorozhong/wahwah-avatar/pull/9) merged). Four commits: the two pages, an "Inside the face host" section that sorts `app/src/shared/host/` into the host itself, motion computed live and visual styles, and a fix to the `host.ts` comment that named a missing `renderer.ts`.
 - State: awaiting review. The host and motion claims were checked against the code; every file the pages name exists on `main`.
-- Verified: `npm run typecheck`, `npm test` (39 tests) and `npm run build` pass on `4021106`.
-- Open question: should `README.md` and `goals.md` link to `architecture.md`, as #11 proposes? Not added.
-- P-01: push this branch and open its PR, titled `docs: add architecture and procedural animation pages`, with `Related to #11` and the body shown on 2026-11-11. You approved this on the condition that #9 merges first, which it has. The rebase changed the branch tip, so the open-pr skill needs your OK on the rebased branch before pushing. Blocks: the docs PR.
-- Next action: you confirm P-01 (and say whether to add the README link first); then push and open the PR.
+- Verified: `npm run typecheck`, `npm test` (39 tests) and `npm run build` pass on `47298a4`; `fcbb1e5` changes only a Markdown file.
+- Open question: should `README.md` and `goals.md` link to `architecture.md`, as #11 proposes? Left out of #12 on purpose; still open in #11.
+- Next action: review and merge #12. Merging needs your OK.
 
 ## Ranked work
 
-1. Open the docs PR from `docs/architecture-docs` (P-01), and settle the file structure in [#11](https://github.com/pomodorozhong/wahwah-avatar/issues/11).
+1. Review and merge the docs PR [#12](https://github.com/pomodorozhong/wahwah-avatar/pull/12), then settle the file structure in [#11](https://github.com/pomodorozhong/wahwah-avatar/issues/11).
 2. Delete the local `experiments/` copy now that [#9](https://github.com/pomodorozhong/wahwah-avatar/pull/9) has merged; its code is in the repository. It is untracked, so this needs your OK.
 3. Check the grid UI in a browser on `main`: the layout redesign was rebuilt into #7 and was only checked with typecheck, tests and build after the rebuild. Not checked: "Open .vrm file…", a 4 x 4 grid, narrow windows, `npm run build:pages`. The ink chip menu was checked on the #9 branch before it merged.
 4. Run the line-boil experiment ([#3](https://github.com/pomodorozhong/wahwah-avatar/issues/3)) and the visual style comparison ([#4](https://github.com/pomodorozhong/wahwah-avatar/issues/4)) in the new grid.
