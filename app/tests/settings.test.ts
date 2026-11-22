@@ -9,12 +9,12 @@ describe('parseSettings', () => {
   });
 
   it('round-trips saved settings', () => {
-    const settings = { speed: 0.25, sync: true, panelOpen: true };
+    const settings = { speed: 0.25, sync: false, panelOpen: true };
     expect(parseSettings(serializeSettings(settings))).toEqual(settings);
   });
 
   it('drops a speed the panel does not offer and values of the wrong type', () => {
-    expect(parseSettings(JSON.stringify({ speed: 3, sync: 'yes', panelOpen: true }))).toEqual({ speed: 1, sync: false, panelOpen: true });
+    expect(parseSettings(JSON.stringify({ speed: 3, sync: 'yes', panelOpen: true }))).toEqual({ speed: 1, sync: true, panelOpen: true });
   });
 });
 

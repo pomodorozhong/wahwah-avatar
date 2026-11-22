@@ -13,7 +13,7 @@ export interface Settings {
   panelOpen: boolean;
 }
 
-export const defaultSettings = (): Settings => ({ speed: 1, sync: false, panelOpen: false });
+export const defaultSettings = (): Settings => ({ speed: 1, sync: true, panelOpen: false });
 
 export const serializeSettings = (settings: Settings): string => JSON.stringify(settings);
 

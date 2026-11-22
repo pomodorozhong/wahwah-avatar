@@ -103,6 +103,8 @@ interface Cell {
   host: VrmFace | null;
   /** The loaded model has taken the synced view; a new model resets its camera to its own home. */
   viewSynced: boolean;
+  /** What the cell's held pose was replayed for, so it is replayed only when that changes. */
+  heldKey: string;
 }
 
 let cells: Cell[] = [];
@@ -143,6 +145,7 @@ function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod, style:
     ctx: canvas.getContext('2d')!,
     host: null,
     viewSynced: false,
+    heldKey: '',
   };
   modelEl.replaceChildren(...modelOptions());
   modelEl.addEventListener('change', () => {
@@ -349,6 +352,7 @@ async function speak(): Promise<void> {
     p.load(utterance.audio as Float32Array<ArrayBuffer>);
     held = null;
     playhead = 0;
+    for (const cell of cells) cell.host?.startUtterance();
     timelineEl.max = String(p.duration);
     timelineEl.disabled = playPauseBtn.disabled = false;
     await p.play();
@@ -404,11 +408,12 @@ function frame(now: number): void {
   // passing, which makes every host show the exact pose for its controls
   // (no easing or held frames lagging behind the playhead).
   let hostDt = dt;
+  const heldTrack = track && position === null && held !== null ? track : null;
   if (track && position !== null) {
     follower.follow(sampleFaceTrack(track, position));
     hostDt = dt * settings.speed;
-  } else if (track && held !== null) {
-    follower.follow(sampleFaceTrack(track, held));
+  } else if (heldTrack) {
+    follower.follow(sampleFaceTrack(heldTrack, held!));
     hostDt = 0;
   } else follower.relax();
   follower.tick(dt);
@@ -421,6 +426,14 @@ function frame(now: number): void {
       if (syncedView) applyView(cell.host.navigation, syncedView);
     }
     cell.host.setControls(follower.controls);
+    if (heldTrack) {
+      // Replay the body and mouth up to the playhead, once per position, mouth mode and model.
+      const key = `${held}|${cell.mouthEl.value}|${cell.host.status}|${seed}`;
+      if (cell.heldKey !== key) {
+        cell.heldKey = key;
+        cell.host.holdAt(held!, (t) => sampleFaceTrack(heldTrack, t));
+      }
+    } else cell.heldKey = '';
     renderCell(cell, hostDt);
     cell.statusEl.textContent = cell.host.status;
     cell.mouthEl.hidden = !cell.host.puppetMouth;
