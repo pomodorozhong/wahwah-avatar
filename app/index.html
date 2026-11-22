@@ -26,6 +26,16 @@
       .panel .hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:13px; pointer-events:none; }
       .panel .status { position:absolute; left:8px; bottom:8px; font-size:12px; color:var(--dim); pointer-events:none; }
       [hidden] { display:none !important; }
+      #settings { flex:none; display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; padding:8px; border-bottom:1px solid var(--line); font-size:13px; }
+      #settings .label { color:var(--dim); margin-right:4px; }
+      #speeds { display:flex; align-items:center; gap:4px; }
+      #speeds button { padding:4px 9px; font-size:12px; }
+      #speeds button.on { background:#2f6fe0; border-color:#2f6fe0; }
+      #settings .transport { flex:1 1 260px; min-width:0; display:flex; align-items:center; gap:8px; }
+      #playPause { width:36px; padding:4px 0; font-size:12px; }
+      #timeline { flex:1; min-width:80px; accent-color:var(--accent); }
+      #time { color:var(--dim); font-variant-numeric:tabular-nums; }
+      #settings .check { display:flex; align-items:center; gap:6px; cursor:pointer; }
       .menu { position:fixed; z-index:20; min-width:200px; max-width:min(320px, calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; background:#262d40; border:1px solid #3c4458; border-radius:10px; padding:6px; box-shadow:0 8px 24px #000a; font-size:13px; }
       .menu .item { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; }
       .menu .item:hover { background:#ffffff14; }
@@ -49,8 +59,20 @@
       <button id="stop">Stop</button>
       <span class="sep"></span>
       <button id="layoutBtn" aria-haspopup="menu" aria-expanded="false">Default · 2 × 1 ▾</button>
+      <button id="settingsBtn" aria-controls="settings" aria-expanded="false">Settings</button>
       <input id="file" type="file" accept=".vrm" hidden />
     </header>
+    <div id="settings" hidden>
+      <div id="speeds" role="group" aria-label="Playback speed"><span class="label">Speed</span></div>
+      <span class="sep"></span>
+      <div class="transport">
+        <button id="playPause" type="button" aria-label="Play" disabled>▶</button>
+        <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Playhead" disabled />
+        <span id="time">0.00 / 0.00 s</span>
+      </div>
+      <span class="sep"></span>
+      <label class="check"><input id="syncView" type="checkbox" /> Sync view</label>
+    </div>
     <main id="grid"></main>
     <script type="module" src="/src/playground/main.ts"></script>
   </body>

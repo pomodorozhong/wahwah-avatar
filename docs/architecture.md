@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 1. **wahwah** (the `wahwah` package) turns text into a rendered utterance: audio, plus a `FaceControlTrack` that says how the face should move over time. This repository does not make speech or timing.
-2. **Playback** (`app/src/shared/playback.ts`) plays the audio and keeps one clock. The face reads the same clock, so the picture stays in step with the sound.
+2. **Playback** (`app/src/shared/playback.ts`) plays the audio and keeps one clock. The face reads the same clock, so the picture stays in step with the sound. The clock can run slower or faster (the audio's pitch shifts with it) and start from any point; `clock.ts` maps context time to the utterance position across rate changes, and is unit tested. When the playground holds a paused or scrubbed position, it renders every host with no time passing, so each shows the exact pose for that moment instead of easing towards it.
 3. **The follower** (`app/src/shared/host/follower.ts`) holds the current face controls and returns them to neutral when speech stops.
 4. **A face host** turns those controls into a picture. A host is anything that implements the `FaceHost` interface (`host/host.ts`). Today the one host is a VRM host, which drives any VRM avatar through its standard mouth expressions. Tofu, the built-in reference face, is a VRM too.
 5. **The renderer** is one shared WebGL context, created by the playground page (`app/src/playground/main.ts`). Every host draws with it, then each playground cell copies its frame onto its own canvas, so many cells never run into the browser's limit on WebGL contexts.
@@ -29,7 +29,7 @@ flowchart LR
 - `host.ts`: the `FaceHost` interface, and the `RenderStyle` type a model file can ask for.
 - `vrm.ts`: the VRM host. It loads a model, places the lights and camera, and every frame sets the model's expressions from the current controls.
 - `mappings.ts`: turns face controls into the VRM mouth expressions (the vowel shapes A, I, U, E, O). Unit tested.
-- `faceNavigation.ts`: frames the camera on the face and keeps the user's orbit, pan and zoom when a cell is resized.
+- `faceNavigation.ts`: frames the camera on the face and keeps the user's orbit, pan and zoom when a cell is resized. It can also read and apply a view relative to the home framing (orbit angles, zoom as a ratio of the home distance, pan in home distances along the home camera's axes), which is how the playground's sync view copies a move between cells framed differently. Unit tested.
 
 **Motion computed live (procedural animation).** See [procedural-animation.md](procedural-animation.md) for why.
 
