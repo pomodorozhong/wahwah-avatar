@@ -35,7 +35,12 @@ flowchart LR
 
 - `follower.ts`: follows the control track and eases the face back to neutral when speech stops. It sits before the host in the flow: the playground runs one follower and hands its controls to every host.
 - `mouthPlan.ts`: which replacement mouth to show, and when. Unit tested.
-- `puppetMouth.ts`: the mouth modes for the Constraint Twist sample, both the cut-paper mouths and the shader patches.
+- `puppetMouth.ts`: the mouth modes for the Constraint Twist sample, both the cut-paper mouths and the shader patches. The cut-paper mouths and their timing live in `CutMouths`, which Tofu shares.
+- `tofuMouth.ts`: the same mouth modes on Tofu. Its face differs from the sample's in ways that shaped the code:
+  - Tofu's body channels (`drive`, `follow`) bend the face mesh itself, not a bone. A drawn mouth fixed to the head slides off the face and sinks into it, so `tofuMouth.ts` moves the drawings by the same bend at the lip line. Its constants copy `brushInkBody` in `tools/tofu/cube-motion.mjs`; change both together.
+  - Tofu's jaw drops, so its mouth opens downward from the lip line. Each drawing hangs by its top edge from that line, so a closing drawing meets Tofu's resting mouth in the same place.
+  - The sample's closed drawings are much wider than Tofu's small resting mouth, so at rest Tofu shows its own mouth, and paints it over in skin colour while a drawing is up.
+  - Tofu's materials are unlit, so its contour and its visual styles are both patches on the same material. Each patch chains the one before it.
 - `referenceMouth.ts`: the traced mouth frames that Gesture replay draws.
 - `studyMotion.ts`: Tofu's acting. Gaze, brow lift and body drive follow the phrasing of the speech, timed by settings stored in Tofu's file.
 - Smaller pieces live in the files above: the blink timing (`Blinker` in `mappings.ts`, unit tested), and in `vrm.ts` Tofu's breath and the slow neck sway of every other model.
