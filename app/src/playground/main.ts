@@ -336,29 +336,50 @@ function ensurePlayer(): Player {
   return player;
 }
 
+/** The current utterance has been played by Speak; the next Speak renders a new variation. */
+let spoken = false;
+
+/**
+ * Render a new variation of the text, without playing it, so the timeline can
+ * be scrubbed before Speak. Replaces the current utterance and stops its playback.
+ */
+function prepare(): void {
+  const p = ensurePlayer();
+  const utterance = renderMumble(
+    textEl.value,
+    { seed: seed++ },
+    DEFAULT_VOICE,
+    p.sampleRate,
+    { engine: 'formant', brassColor: 0.75 },
+    true,
+  );
+  track = utterance.track;
+  p.load(utterance.audio as Float32Array<ArrayBuffer>);
+  spoken = false;
+  held = null;
+  playhead = 0;
+  for (const cell of cells) cell.host?.startUtterance();
+  timelineEl.max = String(p.duration);
+  timelineEl.disabled = playPauseBtn.disabled = false;
+}
+
+/** Play the prepared utterance from the start; once it has been spoken, render a new one first. */
 async function speak(): Promise<void> {
   speakBtn.disabled = true;
   try {
-    const p = ensurePlayer();
-    const utterance = renderMumble(
-      textEl.value,
-      { seed: seed++ },
-      DEFAULT_VOICE,
-      p.sampleRate,
-      { engine: 'formant', brassColor: 0.75 },
-      true,
-    );
-    track = utterance.track;
-    p.load(utterance.audio as Float32Array<ArrayBuffer>);
-    held = null;
-    playhead = 0;
-    for (const cell of cells) cell.host?.startUtterance();
-    timelineEl.max = String(p.duration);
-    timelineEl.disabled = playPauseBtn.disabled = false;
-    await p.play();
+    if (spoken || !player?.duration) prepare();
+    spoken = true;
+    await playFrom(0);
   } finally {
     speakBtn.disabled = false;
   }
+}
+
+function playFrom(offset: number): Promise<void> {
+  held = null;
+  // Keep each host's state at the start, which a held pose replays from.
+  if (offset === 0) for (const cell of cells) cell.host?.startUtterance();
+  return player?.play(offset) ?? Promise.resolve();
 }
 
 function stop(): void {
@@ -377,9 +398,7 @@ function playPause(): void {
     held = playhead = position;
     return;
   }
-  const from = playhead >= player.duration - 1e-3 ? 0 : playhead;
-  held = null;
-  void player.play(from);
+  void playFrom(playhead >= player.duration - 1e-3 ? 0 : playhead);
 }
 
 /** Show the pose at the dragged playhead in every cell; playback stops while scrubbing. */
@@ -697,5 +716,16 @@ function savedText(key: string): string | null {
 const profiles: Profiles = parseProfiles(savedText(PROFILES_KEY), isKnownModel, savedText(STORAGE_KEY));
 
 showLayout(profiles.layouts[profiles.active]);
-void loadVoices().then(() => (speakBtn.disabled = false));
+void loadVoices().then(() => {
+  speakBtn.disabled = false;
+  prepare();
+});
+// A text edit prepares the new text, so the timeline always matches what Speak will say.
+let editTimer = 0;
+textEl.addEventListener('input', () => {
+  clearTimeout(editTimer);
+  editTimer = window.setTimeout(() => {
+    if (!speakBtn.disabled) prepare();
+  }, 300);
+});
 requestAnimationFrame(frame);
