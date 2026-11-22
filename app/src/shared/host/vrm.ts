@@ -56,6 +56,10 @@ export class VrmFace implements FaceHost {
   private readonly jawAngles = new Map<string, number>();
   private readonly extent = new THREE.Vector3();
   private poseClock = 0;
+  /** The body's state when the current utterance started, so a held pose can replay from it. */
+  private bodyAtStart: StudyMotion | null = null;
+  /** Showing a pose from `holdAt`; renders with no time passing keep it. */
+  private holding = false;
 
   constructor() {
     this.scene.background = new THREE.Color(0x1d2230);
@@ -103,6 +107,8 @@ export class VrmFace implements FaceHost {
       this.softbox.visible = isTofu;
       const timing = gltf.scene.userData.tofuMotion;
       this.body = isTofu && timing ? new StudyMotion(timing) : null;
+      this.bodyAtStart = null;
+      this.holding = false;
       this.bindJaw(isTofu ? vrm.scene.getObjectByName('DialogueJaw') : undefined);
       this.poseClock = 0;
       this.shadow.visible = isTofu;
@@ -158,8 +164,11 @@ export class VrmFace implements FaceHost {
   }
 
   private applyMouth(dtSeconds: number): void {
+    this.setVisemes(this.puppetMouth?.pose(this.mouthMode, this.controls, dtSeconds) ?? this.controls);
+  }
+
+  private setVisemes(controls: FaceControls): void {
     const em = this.vrm?.expressionManager;
-    const controls = this.puppetMouth?.pose(this.mouthMode, this.controls, dtSeconds) ?? this.controls;
     let angle = 0;
     for (const [name, w] of Object.entries(controlsToVrmVisemes(controls))) {
       em?.setValue(name, w);
@@ -168,29 +177,74 @@ export class VrmFace implements FaceHost {
     if (this.jaw) this.jaw.rotation.x = angle;
   }
 
+  /** Call as an utterance starts playing from its beginning; `holdAt` replays from this moment. */
+  startUtterance(): void {
+    this.bodyAtStart = this.body?.clone() ?? null;
+  }
+
+  /**
+   * Show the pose `t` seconds into the utterance whose controls `sample` gives,
+   * as playback from its start would leave it: the body's lag, gaze and brows
+   * and the mouth's held drawings are replayed in small steps. Renders with no
+   * time passing keep the pose; an update with time passing resumes live motion.
+   */
+  holdAt(t: number, sample: (t: number) => FaceControls): void {
+    if (!this.vrm) return;
+    const timing = this.body?.timing;
+    const body = this.bodyAtStart?.clone() ?? (timing ? new StudyMotion(timing) : null);
+    const breath = this.breath();
+    const step = 1 / 120;
+    let controls = sample(0);
+    // A zero step resets the mouth's replacement drawings, as at a fresh start.
+    let mouth = this.puppetMouth?.pose(this.mouthMode, controls, 0) ?? controls;
+    for (let at = 0; at < t;) {
+      const dt = Math.min(step, t - at);
+      at += dt;
+      controls = sample(at);
+      body?.update(controls, dt, breath);
+      mouth = this.puppetMouth?.pose(this.mouthMode, controls, dt) ?? controls;
+    }
+    this.body = body;
+    this.controls = controls;
+    this.holding = true;
+    this.setVisemes(mouth);
+    this.applyBody(this.idleMotion ? this.blinker.update(0) : 0);
+  }
+
+  private breath(): number {
+    return this.idleMotion ? .05 * (1 - Math.cos(this.elapsed * 2)) : 0;
+  }
+
+  private applyBody(blink: number): void {
+    if (!this.body) return;
+    const expressions = this.vrm?.expressionManager;
+    expressions?.setValue('drive', this.body.drive);
+    expressions?.setValue('follow', this.body.follow);
+    // Ease gaze back to the authored crease during a blink.
+    const x = this.body.gazeX * (1-blink), y = this.body.gazeY * (1-blink);
+    expressions?.setValue('gazeLeft', Math.max(0, -x));
+    expressions?.setValue('gazeRight', Math.max(0, x));
+    expressions?.setValue('gazeDown', Math.max(0, -y));
+    expressions?.setValue('gazeUp', Math.max(0, y));
+    expressions?.setValue('browAccent', this.body.brow);
+  }
+
   update(dtSeconds: number): void {
     if (!this.vrm) return;
+    if (this.holding && dtSeconds === 0) {
+      this.vrm.update(0);
+      return;
+    }
+    this.holding = false;
     this.elapsed += dtSeconds;
     const blink = this.idleMotion ? this.blinker.update(dtSeconds) : 0;
-    const breath = this.idleMotion ? .05 * (1 - Math.cos(this.elapsed * 2)) : 0;
-    this.body?.update(this.controls, dtSeconds, breath);
+    this.body?.update(this.controls, dtSeconds, this.breath());
     const fps = this.body?.timing.fps;
     this.poseClock += dtSeconds;
     const expose = !fps || dtSeconds === 0 || this.poseClock >= 1/fps;
     if (expose) {
       this.applyMouth(dtSeconds);
-      if (this.body) {
-        const expressions = this.vrm.expressionManager;
-        expressions?.setValue('drive', this.body.drive);
-        expressions?.setValue('follow', this.body.follow);
-        // Ease gaze back to the authored crease during a blink.
-        const x = this.body.gazeX * (1-blink), y = this.body.gazeY * (1-blink);
-        expressions?.setValue('gazeLeft', Math.max(0, -x));
-        expressions?.setValue('gazeRight', Math.max(0, x));
-        expressions?.setValue('gazeDown', Math.max(0, -y));
-        expressions?.setValue('gazeUp', Math.max(0, y));
-        expressions?.setValue('browAccent', this.body.brow);
-      }
+      this.applyBody(blink);
       this.poseClock = fps ? this.poseClock % (1/fps) : 0;
     }
     const neck = this.vrm.humanoid.getNormalizedBoneNode('neck');

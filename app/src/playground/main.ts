@@ -1,6 +1,7 @@
 // Model playground: render one wahwah utterance, play its audio once, and
 // drive every model cell of the grid from the same face-control track on one
 // clock. The grid size and each cell's model and mouth are saved in the browser.
+// The settings panel slows playback, scrubs a playhead and syncs cell views.
 
 import { DEFAULT_VOICE, loadVoices, renderMumble } from 'wahwah';
 import { sampleFaceTrack, type RenderedUtterance } from 'wahwah/performance';
@@ -20,6 +21,8 @@ import {
   type CellState, type Layout, type Profiles,
 } from './layout';
 import { closeMenu, openMenu, type MenuItem } from './menu';
+import { SETTINGS_KEY, SPEEDS, formatTime, parseSettings, serializeSettings } from './settings';
+import type { FaceNavigation, RelativeView } from '../shared/host/faceNavigation';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = byId<HTMLElement>('grid');
@@ -27,6 +30,13 @@ const textEl = byId<HTMLInputElement>('text');
 const speakBtn = byId<HTMLButtonElement>('speak');
 const fileEl = byId<HTMLInputElement>('file');
 const layoutBtn = byId<HTMLButtonElement>('layoutBtn');
+const settingsBtn = byId<HTMLButtonElement>('settingsBtn');
+const settingsEl = byId<HTMLElement>('settings');
+const speedsEl = byId<HTMLElement>('speeds');
+const playPauseBtn = byId<HTMLButtonElement>('playPause');
+const timelineEl = byId<HTMLInputElement>('timeline');
+const timeEl = byId<HTMLElement>('time');
+const syncEl = byId<HTMLInputElement>('syncView');
 
 // Browsers cap live WebGL contexts (about 16, fewer on some), and the oldest
 // is lost when the cap is hit. So every cell shares one offscreen renderer
@@ -91,6 +101,10 @@ interface Cell {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   host: VrmFace | null;
+  /** The loaded model has taken the synced view; a new model resets its camera to its own home. */
+  viewSynced: boolean;
+  /** What the cell's held pose was replayed for, so it is replayed only when that changes. */
+  heldKey: string;
 }
 
 let cells: Cell[] = [];
@@ -130,6 +144,8 @@ function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod, style:
     statusEl: el.querySelector<HTMLElement>('.status')!,
     ctx: canvas.getContext('2d')!,
     host: null,
+    viewSynced: false,
+    heldKey: '',
   };
   modelEl.replaceChildren(...modelOptions());
   modelEl.addEventListener('change', () => {
@@ -212,6 +228,8 @@ function setModel(cell: Cell, model: string | null): void {
   }
   const host = new VrmFace();
   host.navigation.connect(cell.canvas);
+  watchNavigation(host.navigation);
+  cell.viewSynced = false;
   host.mouthMode = cell.mouthEl.value as MouthMode;
   cell.host = host;
   const style = cell.styleEl.value as StyleChoice;
@@ -303,29 +321,101 @@ const follower = new ControlFollower();
 let player: Player | null = null;
 let track: RenderedUtterance['track'] = null;
 let seed = 1;
+/** Where the playhead sits when nothing is playing. */
+let playhead = 0;
+/** A paused or scrubbed position whose exact pose every cell holds; null lets the face relax. */
+let held: number | null = null;
+let scrubbing = false;
 
+function ensurePlayer(): Player {
+  if (!player) {
+    player = new Player();
+    player.rate = settings.speed;
+    player.onEnded = () => (playhead = player?.duration ?? 0);
+  }
+  return player;
+}
+
+/** The current utterance has been played by Speak; the next Speak renders a new variation. */
+let spoken = false;
+
+/**
+ * Render a new variation of the text, without playing it, so the timeline can
+ * be scrubbed before Speak. Replaces the current utterance and stops its playback.
+ */
+function prepare(): void {
+  const p = ensurePlayer();
+  const utterance = renderMumble(
+    textEl.value,
+    { seed: seed++ },
+    DEFAULT_VOICE,
+    p.sampleRate,
+    { engine: 'formant', brassColor: 0.75 },
+    true,
+  );
+  track = utterance.track;
+  p.load(utterance.audio as Float32Array<ArrayBuffer>);
+  spoken = false;
+  held = null;
+  playhead = 0;
+  for (const cell of cells) cell.host?.startUtterance();
+  timelineEl.max = String(p.duration);
+  timelineEl.disabled = playPauseBtn.disabled = false;
+}
+
+/** Play the prepared utterance from the start; once it has been spoken, render a new one first. */
 async function speak(): Promise<void> {
   speakBtn.disabled = true;
   try {
-    player ??= new Player();
-    const utterance = renderMumble(
-      textEl.value,
-      { seed: seed++ },
-      DEFAULT_VOICE,
-      player.sampleRate,
-      { engine: 'formant', brassColor: 0.75 },
-      true,
-    );
-    track = utterance.track;
-    await player.play(utterance.audio as Float32Array<ArrayBuffer>);
+    if (spoken || !player?.duration) prepare();
+    spoken = true;
+    await playFrom(0);
   } finally {
     speakBtn.disabled = false;
   }
 }
 
+function playFrom(offset: number): Promise<void> {
+  held = null;
+  // Keep each host's state at the start, which a held pose replays from.
+  if (offset === 0) for (const cell of cells) cell.host?.startUtterance();
+  return player?.play(offset) ?? Promise.resolve();
+}
+
 function stop(): void {
   player?.stop();
+  held = null;
+  playhead = 0;
   follower.relax();
+}
+
+/** Pause and hold the pose, or play on from the playhead (from the start once it reached the end). */
+function playPause(): void {
+  if (!player || !player.duration) return;
+  const position = player.position();
+  if (position !== null) {
+    player.stop();
+    held = playhead = position;
+    return;
+  }
+  void playFrom(playhead >= player.duration - 1e-3 ? 0 : playhead);
+}
+
+/** Show the pose at the dragged playhead in every cell; playback stops while scrubbing. */
+function scrub(): void {
+  player?.stop();
+  held = playhead = Number(timelineEl.value);
+}
+
+function updateTransport(position: number | null): void {
+  const at = position ?? playhead;
+  if (!scrubbing) timelineEl.value = String(at);
+  timeEl.textContent = formatTime(at, player?.duration ?? 0);
+  const label = position !== null ? 'Pause' : 'Play';
+  if (playPauseBtn.getAttribute('aria-label') !== label) {
+    playPauseBtn.setAttribute('aria-label', label);
+    playPauseBtn.textContent = position !== null ? '❚❚' : '▶';
+  }
 }
 
 let last = performance.now();
@@ -333,13 +423,37 @@ function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const position = player?.position() ?? null;
-  if (track && position !== null) follower.follow(sampleFaceTrack(track, position));
-  else follower.relax();
+  // Hosts animate at the playback speed. A held pose renders with no time
+  // passing, which makes every host show the exact pose for its controls
+  // (no easing or held frames lagging behind the playhead).
+  let hostDt = dt;
+  const heldTrack = track && position === null && held !== null ? track : null;
+  if (track && position !== null) {
+    follower.follow(sampleFaceTrack(track, position));
+    hostDt = dt * settings.speed;
+  } else if (heldTrack) {
+    follower.follow(sampleFaceTrack(heldTrack, held!));
+    hostDt = 0;
+  } else follower.relax();
   follower.tick(dt);
+  updateTransport(position);
   for (const cell of cells) {
     if (!cell.host) continue;
+    if (settings.sync && !cell.viewSynced && !cell.host.status) {
+      // A model that just loaded framed itself at home; give it the shared view.
+      cell.viewSynced = true;
+      if (syncedView) applyView(cell.host.navigation, syncedView);
+    }
     cell.host.setControls(follower.controls);
-    renderCell(cell, dt);
+    if (heldTrack) {
+      // Replay the body and mouth up to the playhead, once per position, mouth mode and model.
+      const key = `${held}|${cell.mouthEl.value}|${cell.host.status}|${seed}`;
+      if (cell.heldKey !== key) {
+        cell.heldKey = key;
+        cell.host.holdAt(held!, (t) => sampleFaceTrack(heldTrack, t));
+      }
+    } else cell.heldKey = '';
+    renderCell(cell, hostDt);
     cell.statusEl.textContent = cell.host.status;
     cell.mouthEl.hidden = !cell.host.puppetMouth;
     cell.inkEl.hidden = cell.host.renderStyle !== 'ink-dither';
@@ -354,6 +468,103 @@ for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(
 
 speakBtn.addEventListener('click', () => void speak());
 byId('stop').addEventListener('click', stop);
+
+const settings = parseSettings(savedText(SETTINGS_KEY));
+
+function saveSettings(): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, serializeSettings(settings));
+  } catch {
+    // Storage can be blocked; the settings then last only for this visit.
+  }
+}
+
+// Sync view: a camera move the user makes in one cell is copied to the others,
+// relative to each cell's own home framing.
+/** The view every cell shows while sync is on; null until a cell is moved. */
+let syncedView: RelativeView | null = null;
+/** The cell navigation the user is dragging or scrolling, and the last one moved. */
+let activeNav: FaceNavigation | null = null;
+let lastMoved: FaceNavigation | null = null;
+let applying = false;
+
+function applyView(nav: FaceNavigation, view: RelativeView): void {
+  applying = true;
+  try {
+    nav.applyView(view);
+  } finally {
+    applying = false;
+  }
+}
+
+function watchNavigation(nav: FaceNavigation): void {
+  nav.addEventListener('start', () => (activeNav = nav));
+  nav.addEventListener('end', () => {
+    if (activeNav === nav) activeNav = null;
+  });
+  // Resizes and resets also report changes; only the user's own moves are copied.
+  nav.addEventListener('change', () => {
+    if (applying || activeNav !== nav) return;
+    lastMoved = nav;
+    if (!settings.sync) return;
+    syncedView = nav.relativeView();
+    if (!syncedView) return;
+    for (const cell of cells) {
+      const other = cell.host?.navigation;
+      if (other && other !== nav) applyView(other, syncedView);
+    }
+  });
+}
+
+function setSync(on: boolean): void {
+  settings.sync = on;
+  saveSettings();
+  if (!on) return;
+  // Line every cell up with the one moved last, or leave them at home.
+  const source = cells.some((c) => c.host?.navigation === lastMoved) ? lastMoved : null;
+  syncedView = source?.relativeView() ?? null;
+  for (const cell of cells) if (cell.host?.navigation !== source) cell.viewSynced = false;
+}
+
+function showSpeeds(): void {
+  for (const button of speedsEl.querySelectorAll<HTMLButtonElement>('button')) {
+    const on = Number(button.dataset.speed) === settings.speed;
+    button.classList.toggle('on', on);
+    button.setAttribute('aria-pressed', String(on));
+  }
+}
+
+function showPanel(): void {
+  settingsEl.hidden = !settings.panelOpen;
+  settingsBtn.setAttribute('aria-expanded', String(settings.panelOpen));
+}
+
+speedsEl.append(...SPEEDS.map((speed) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.speed = String(speed);
+  button.textContent = `${speed}×`;
+  button.addEventListener('click', () => {
+    settings.speed = speed;
+    if (player) player.rate = speed;
+    showSpeeds();
+    saveSettings();
+  });
+  return button;
+}));
+settingsBtn.addEventListener('click', () => {
+  settings.panelOpen = !settings.panelOpen;
+  showPanel();
+  saveSettings();
+});
+playPauseBtn.addEventListener('click', playPause);
+timelineEl.addEventListener('pointerdown', () => (scrubbing = true));
+window.addEventListener('pointerup', () => (scrubbing = false));
+timelineEl.addEventListener('input', scrub);
+syncEl.addEventListener('change', () => setSync(syncEl.checked));
+syncEl.checked = settings.sync;
+showSpeeds();
+showPanel();
 
 function updateLayoutButton(): void {
   layoutBtn.textContent = `${profiles.active} · ${cols} × ${rows} ▾`;
@@ -505,5 +716,16 @@ function savedText(key: string): string | null {
 const profiles: Profiles = parseProfiles(savedText(PROFILES_KEY), isKnownModel, savedText(STORAGE_KEY));
 
 showLayout(profiles.layouts[profiles.active]);
-void loadVoices().then(() => (speakBtn.disabled = false));
+void loadVoices().then(() => {
+  speakBtn.disabled = false;
+  prepare();
+});
+// A text edit prepares the new text, so the timeline always matches what Speak will say.
+let editTimer = 0;
+textEl.addEventListener('input', () => {
+  clearTimeout(editTimer);
+  editTimer = window.setTimeout(() => {
+    if (!speakBtn.disabled) prepare();
+  }, 300);
+});
 requestAnimationFrame(frame);

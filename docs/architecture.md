@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 1. **wahwah** (the `wahwah` package) turns text into a rendered utterance: audio, plus a `FaceControlTrack` that says how the face should move over time. This repository does not make speech or timing.
-2. **Playback** (`app/src/shared/playback.ts`) plays the audio and keeps one clock. The face reads the same clock, so the picture stays in step with the sound.
+2. **Playback** (`app/src/shared/playback.ts`) plays the audio and keeps one clock. The face reads the same clock, so the picture stays in step with the sound. The clock can run slower or faster (the audio's pitch shifts with it) and start from any point; `clock.ts` maps context time to the utterance position across rate changes, and is unit tested. When the playground holds a paused or scrubbed position, each host replays its motion from the start of the utterance up to that moment in small steps (`holdAt` in `vrm.ts`), so the body's lag, gaze, brows and the mouth's held drawings match what playback shows there, then renders with no time passing.
 3. **The follower** (`app/src/shared/host/follower.ts`) holds the current face controls and returns them to neutral when speech stops.
 4. **A face host** turns those controls into a picture. A host is anything that implements the `FaceHost` interface (`host/host.ts`). Today the one host is a VRM host, which drives any VRM avatar through its standard mouth expressions. Tofu, the built-in reference face, is a VRM too.
 5. **The renderer** is one shared WebGL context, created by the playground page (`app/src/playground/main.ts`). Every host draws with it, then each playground cell copies its frame onto its own canvas, so many cells never run into the browser's limit on WebGL contexts.
@@ -29,13 +29,18 @@ flowchart LR
 - `host.ts`: the `FaceHost` interface, and the `RenderStyle` type a model file can ask for.
 - `vrm.ts`: the VRM host. It loads a model, places the lights and camera, and every frame sets the model's expressions from the current controls.
 - `mappings.ts`: turns face controls into the VRM mouth expressions (the vowel shapes A, I, U, E, O). Unit tested.
-- `faceNavigation.ts`: frames the camera on the face and keeps the user's orbit, pan and zoom when a cell is resized.
+- `faceNavigation.ts`: frames the camera on the face and keeps the user's orbit, pan and zoom when a cell is resized. It can also read and apply a view relative to the home framing (orbit angles, zoom as a ratio of the home distance, pan in home distances along the home camera's axes), which is how the playground's sync view copies a move between cells framed differently. Unit tested.
 
 **Motion computed live (procedural animation).** See [procedural-animation.md](procedural-animation.md) for why.
 
 - `follower.ts`: follows the control track and eases the face back to neutral when speech stops. It sits before the host in the flow: the playground runs one follower and hands its controls to every host.
 - `mouthPlan.ts`: which replacement mouth to show, and when. Unit tested.
-- `puppetMouth.ts`: the mouth modes for the Constraint Twist sample, both the cut-paper mouths and the shader patches.
+- `puppetMouth.ts`: the mouth modes for the Constraint Twist sample, both the cut-paper mouths and the shader patches. The cut-paper mouths and their timing live in `CutMouths`, which Tofu shares.
+- `tofuMouth.ts`: the same mouth modes on Tofu. Its face differs from the sample's in ways that shaped the code:
+  - Tofu's body channels (`drive`, `follow`) bend the face mesh itself, not a bone. A drawn mouth fixed to the head slides off the face and sinks into it, so `tofuMouth.ts` moves the drawings by the same bend at the lip line. Its constants copy `brushInkBody` in `tools/tofu/cube-motion.mjs`; change both together.
+  - Tofu's jaw drops, so its mouth opens downward from the lip line. Each drawing hangs by its top edge from that line, so a closing drawing meets Tofu's resting mouth in the same place.
+  - The sample's closed drawings are much wider than Tofu's small resting mouth, so at rest Tofu shows its own mouth, and paints it over in skin colour while a drawing is up.
+  - Tofu's materials are unlit, so its contour and its visual styles are both patches on the same material. Each patch chains the one before it.
 - `referenceMouth.ts`: the traced mouth frames that Gesture replay draws.
 - `studyMotion.ts`: Tofu's acting. Gaze, brow lift and body drive follow the phrasing of the speech, timed by settings stored in Tofu's file.
 - Smaller pieces live in the files above: the blink timing (`Blinker` in `mappings.ts`, unit tested), and in `vrm.ts` Tofu's breath and the slow neck sway of every other model.

@@ -32,6 +32,11 @@ export class StudyMotion {
   private phrase = 0;
   constructor(readonly timing: Timing) {}
 
+  /** A copy with the same state, to replay motion from this moment. */
+  clone(): StudyMotion {
+    return Object.assign(new StudyMotion(this.timing), this);
+  }
+
   update(controls: FaceControls, dt: number, breath = 0): void {
     const effort = Math.min(1, 1.4 * controls.jawOpen + .76 * controls.lipWidth + .91 * controls.lipRound + breath);
     if (dt === 0) {
