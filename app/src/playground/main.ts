@@ -184,7 +184,8 @@ function setModel(cell: Cell, model: string | null): void {
   cell.statusEl.textContent = '';
   cell.mouthEl.hidden = true;
   cell.inkEl.hidden = true;
-  cell.ctx.clearRect(0, 0, cell.canvas.width, cell.canvas.height);
+  // Zero size clears the canvas and makes the next frame size the new host to the cell.
+  cell.canvas.width = 0;
   cell.modelEl.value = model ?? '';
   cell.modelEl.dataset.prev = cell.modelEl.value;
   const source = model ? resolveSource(model) : null;
