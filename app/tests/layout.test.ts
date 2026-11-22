@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_SIDE, clampSide, defaultLayout, parseLayout, parseProfiles, resizeLayout, serializeLayout, serializeProfiles, type Layout,
+  MAX_SIDE, clampSide, defaultLayout, parseLayout, parseProfiles, resizeLayout, serializeLayout, serializeProfiles, styleGallery, type Layout,
 } from '../src/playground/layout';
 
 const valid = (m: string) => m === 'tofu' || m === 'local:vrm/a.vrm';
@@ -9,10 +9,10 @@ const grid = (): Layout => ({
   cols: 2,
   rows: 2,
   cells: [
-    { model: 'tofu', mouth: 'plates', ink: 'bayer' },
-    { model: 'local:vrm/a.vrm', mouth: 'original', ink: 'clustered' },
-    { model: null, mouth: 'original', ink: 'bayer' },
-    { model: 'file:1', mouth: 'gesturePlates', ink: 'bayer' },
+    { model: 'tofu', mouth: 'plates', ink: 'bayer', style: 'comic-print' },
+    { model: 'local:vrm/a.vrm', mouth: 'original', ink: 'clustered', style: 'model' },
+    { model: null, mouth: 'original', ink: 'bayer', style: 'model' },
+    { model: 'file:1', mouth: 'gesturePlates', ink: 'bayer', style: 'painted-toon' },
   ],
 });
 
@@ -48,6 +48,7 @@ describe('serializeLayout and parseLayout', () => {
     expect(loaded.cells[0].mouth).toBe('plates');
     expect(loaded.cells[3].mouth).toBe('gesturePlates');
     expect(loaded.cells[1].ink).toBe('clustered');
+    expect(loaded.cells[0].style).toBe('comic-print');
   });
 
   it('empties a cell whose local model is gone', () => {
@@ -66,12 +67,35 @@ describe('serializeLayout and parseLayout', () => {
     expect(loaded.cells[0].ink).toBe('bayer');
   });
 
+  it('ignores an unknown or inherited style name', () => {
+    for (const style of ['nope', 'toString']) {
+      const loaded = parseLayout(`{"cols":1,"rows":1,"cells":[{"model":"tofu","style":"${style}"}]}`, valid);
+      expect(loaded.cells[0].style).toBe('model');
+    }
+  });
+
   it('clamps the size, pads short cell lists and ignores an unknown mouth', () => {
     const loaded = parseLayout('{"cols":9,"rows":1,"cells":[{"model":"tofu","mouth":"nope"}]}', valid);
     expect(loaded.cols).toBe(MAX_SIDE);
     expect(loaded.cells).toHaveLength(MAX_SIDE);
-    expect(loaded.cells[0]).toEqual({ model: 'tofu', mouth: 'original', ink: 'bayer' });
+    expect(loaded.cells[0]).toEqual({ model: 'tofu', mouth: 'original', ink: 'bayer', style: 'model' });
     expect(loaded.cells[1].model).toBeNull();
+  });
+});
+
+describe('styleGallery', () => {
+  it('shows Tofu in each style, with three ink dither methods, and no empty cell', () => {
+    const gallery = styleGallery();
+    expect([gallery.cols, gallery.rows]).toEqual([3, 2]);
+    expect(gallery.cells.every((c) => c.model === 'tofu')).toBe(true);
+    expect(gallery.cells.map((c) => c.style).slice(0, 3)).toEqual(['standard', 'painted-toon', 'comic-print']);
+    expect(gallery.cells.slice(3).map((c) => [c.style, c.ink])).toEqual([
+      ['ink-dither', 'fourTone'], ['ink-dither', 'bayer'], ['ink-dither', 'reduced'],
+    ]);
+  });
+
+  it('survives saving', () => {
+    expect(parseLayout(serializeLayout(styleGallery()), valid)).toEqual(styleGallery());
   });
 });
 
@@ -96,10 +120,11 @@ describe('profiles', () => {
     expect(back.layouts.Default.cells[0].model).toBe('tofu');
   });
 
-  it('falls back to one Default profile when the text is unreadable or empty', () => {
-    for (const text of ['nope', '{}', '{"layouts":{}}', '{"layouts":[]}']) {
+  it('falls back to one Tofu styles profile holding the style gallery when the text is unreadable or empty', () => {
+    for (const text of [null, 'nope', '{}', '{"layouts":{}}', '{"layouts":[]}']) {
       const back = parseProfiles(text, valid);
-      expect(Object.keys(back.layouts)).toEqual(['Default']);
+      expect(back.active).toBe('Tofu styles');
+      expect(back.layouts).toEqual({ 'Tofu styles': styleGallery() });
     }
   });
 
