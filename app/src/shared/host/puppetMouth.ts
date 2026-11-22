@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { MToonMaterial, type VRM } from '@pixiv/three-vrm';
 import { NEUTRAL, type FaceControls } from 'wahwah/performance';
 import {
-  GestureReplay, PlateHold, blendControls, gestureScale, hingeAngle, hingeControls, replayPlates,
+  GestureReplay, PLATE_CLOSED, PlateHold, blendControls, gestureScale, hingeAngle, hingeControls, replayPlates,
   type MouthMode,
 } from './mouthPlan';
 import { makeReferenceMouths } from './referenceMouth';
@@ -35,7 +35,7 @@ function piece(color: THREE.Color, depth: number, points: number[]): THREE.Mesh 
 }
 
 /** A replacement mouth: lip rim, dark cavity, then optional teeth and tongue. */
-function replacement(width: number, top: number, bottom: number, tilt: number, teeth: number): THREE.Group {
+export function replacement(width: number, top: number, bottom: number, tilt: number, teeth: number): THREE.Group {
   const plate = new THREE.Group();
   const outline = (w: number, t: number, b: number) => [
     -w, 0, -w * 0.52, t * 1.4, 0, t, w * 0.72, t * 1.25, w, tilt,
@@ -67,10 +67,12 @@ function replacement(width: number, top: number, bottom: number, tilt: number, t
 }
 
 // The contour is drawn in face-plane coordinates, so it follows the skin and
-// can take part in any later full-screen style pass.
-const contourShader = `
-  if (mouthContour > 0.5 && mouthRest.z > 0.057) {
-    vec2 p = (mouthRest.xy - vec2(0.0, 1.385)) * 1000.0;
+// can take part in any later full-screen style pass. `lipY` is the lip seam's
+// height, `mm` turns model units into the millimetres the drawing uses, and
+// only skin in front of `frontZ` is drawn on.
+export const contourShader = (lipY: number, mm: number, frontZ: number) => `
+  if (mouthContour > 0.5 && mouthRest.z > ${frontZ.toFixed(4)}) {
+    vec2 p = (mouthRest.xy - vec2(0.0, ${lipY.toFixed(4)})) * ${mm.toFixed(4)};
     float jaw = mouthShape.x, wide = mouthShape.y, roundness = mouthShape.z;
     float w = 15.5 + 8.5 * wide - 8.0 * roundness;
     float x = p.x / w;
@@ -147,15 +149,96 @@ function sampleFaceMaterials(vrm: VRM): Set<MToonMaterial> | undefined {
   return matched ? materials : undefined;
 }
 
-export class PuppetMouth {
+/** A mouth rig: applies a mouth mode and returns the controls the model's own mouth should use. */
+export interface MouthRig {
+  pose(mode: MouthMode, c: FaceControls, dt: number): FaceControls;
+}
+
+/**
+ * The drawn mouths, in millimetres around the lip seam: the five replacement
+ * drawings and the traced reference frames. Mount `group` on the face.
+ */
+export class CutMouths {
+  readonly group = new THREE.Group();
   private readonly plates = new THREE.Group();
   private readonly reference = makeReferenceMouths();
+  private readonly hold = new PlateHold();
+  private readonly replay = new GestureReplay();
+  /** Each drawing's top edge, in millimetres above the lip seam at full size. */
+  private readonly tops = new Map<THREE.Object3D, number>();
+
+  /** `ownRest`: show nothing instead of the closed drawing, so the model's own closed mouth shows. */
+  constructor(private readonly ownRest = false) {
+    this.plates.add(
+      replacement(15, 0.55, 0.6, 0.5, 0), replacement(16, 3.0, 5, 1, 2.6),
+      replacement(18, 5.5, 11, 1.8, 4), replacement(21, 3.5, 4.7, 2.8, 4),
+      replacement(8, 3.8, 7.6, 0.4, 0),
+    );
+    this.group.add(this.plates, this.reference);
+    this.plates.visible = this.reference.visible = false;
+    this.group.updateMatrixWorld(true);
+    for (const drawing of [...this.plates.children, ...this.reference.children]) {
+      this.tops.set(drawing, new THREE.Box3().setFromObject(drawing).max.y);
+    }
+  }
+
+  /** The top edge of the drawing on show, in millimetres above the lip seam, or null when none is. */
+  top(): number | null {
+    for (const set of [this.plates, this.reference]) {
+      if (!set.visible) continue;
+      const drawing = set.children.find((child) => child.visible);
+      if (drawing) return (this.tops.get(drawing) ?? 0) * set.scale.y;
+    }
+    return null;
+  }
+
+  /**
+   * Show the drawing for `mode`. Returns `drawn` when a drawing is up, `rest`
+   * when the model's own closed mouth should show, and null for a mode that
+   * draws no cut mouth.
+   */
+  show(mode: MouthMode, c: FaceControls, dt: number, reset: boolean): 'drawn' | 'rest' | null {
+    this.plates.visible = mode === 'plates' || mode === 'gesturePlates';
+    this.reference.visible = false;
+    if (mode === 'plates') {
+      if (reset) this.plates.scale.setScalar(1);
+      const index = this.hold.next(c, dt, reset);
+      return this.showPlate(index);
+    }
+    if (mode === 'gesturePlates' || mode === 'gesture') {
+      const frame = this.replay.frame(c, dt, reset);
+      const scale = gestureScale(c);
+      if (mode === 'gesturePlates') {
+        const pose = frame === null ? undefined : replayPlates[frame];
+        if (pose) this.plates.scale.set(scale * pose.width, scale * pose.height, scale);
+        else this.plates.scale.setScalar(1);
+        return this.showPlate(pose?.plate ?? PLATE_CLOSED);
+      }
+      if (frame === null) return 'rest';
+      this.reference.visible = true;
+      this.reference.scale.setScalar(scale);
+      this.reference.children.forEach((child, i) => { child.visible = i === frame; });
+      return 'drawn';
+    }
+    return null;
+  }
+
+  private showPlate(index: number): 'drawn' | 'rest' {
+    if (this.ownRest && index === PLATE_CLOSED) {
+      this.plates.visible = false;
+      return 'rest';
+    }
+    this.plates.children.forEach((child, i) => { child.visible = i === index; });
+    return index === PLATE_CLOSED ? 'rest' : 'drawn';
+  }
+}
+
+export class PuppetMouth implements MouthRig {
+  private readonly cut = new CutMouths();
   private readonly shape = { value: new THREE.Vector3() };
   private readonly contour = { value: 0 };
   private readonly paint = { value: 0 };
   private readonly hinge = { value: 0 };
-  private readonly hold = new PlateHold();
-  private readonly replay = new GestureReplay();
   private previousMode?: MouthMode;
 
   /** The mouth rig for this model, or undefined when it is not the sample. */
@@ -166,16 +249,10 @@ export class PuppetMouth {
   }
 
   private constructor(vrm: VRM, head: THREE.Object3D, materials: Set<MToonMaterial>) {
-    this.plates.add(
-      replacement(15, 0.55, 0.6, 0.5, 0), replacement(16, 3.0, 5, 1, 2.6),
-      replacement(18, 5.5, 11, 1.8, 4), replacement(21, 3.5, 4.7, 2.8, 4),
-      replacement(8, 3.8, 7.6, 0.4, 0),
-    );
     const mount = new THREE.Group();
     mount.scale.setScalar(0.001);
     mount.position.copy(lipCentre);
-    mount.add(this.plates, this.reference);
-    this.plates.visible = this.reference.visible = false;
+    mount.add(this.cut.group);
     vrm.scene.add(mount);
     vrm.scene.updateMatrixWorld(true);
     head.attach(mount);
@@ -185,7 +262,7 @@ export class PuppetMouth {
       mat.vertexShader = 'uniform float mouthHinge; varying vec3 mouthRest;\n' + mat.vertexShader
         .replace('#include <morphtarget_vertex>', '#include <morphtarget_vertex>\nmouthRest = position;\n' + hingeShader);
       if (!mat.isOutline) {
-        const treatment = /^Face_00_SKIN/.test(mat.name) ? sculptLipShader + contourShader : sculptCavityShader;
+        const treatment = /^Face_00_SKIN/.test(mat.name) ? sculptLipShader + contourShader(1.385, 1000, 0.057) : sculptCavityShader;
         mat.fragmentShader = 'uniform vec3 mouthShape; uniform float mouthContour, mouthPaint; varying vec3 mouthRest;\n'
           + mat.fragmentShader.replace('// -- Almost done!', treatment + '\n// -- Almost done!');
       }
@@ -200,35 +277,13 @@ export class PuppetMouth {
     this.contour.value = Number(mode === 'contour');
     this.paint.value = Number(mode === 'hinge' || mode === 'blend' || mode === 'gesture');
     this.hinge.value = mode === 'hinge' ? hingeAngle(c) : 0;
-    this.plates.visible = mode === 'plates' || mode === 'gesturePlates';
-    this.reference.visible = false;
+    if (this.cut.show(mode, c, dt, reset)) return NEUTRAL;
     if (mode === 'contour') {
       this.shape.value.set(c.jawOpen, c.lipWidth, c.lipRound);
       return NEUTRAL;
     }
     if (mode === 'hinge') return hingeControls(c);
     if (mode === 'blend') return blendControls(c);
-    if (mode === 'plates') {
-      if (reset) this.plates.scale.setScalar(1);
-      const index = this.hold.next(c, dt, reset);
-      this.plates.children.forEach((child, i) => { child.visible = i === index; });
-      return NEUTRAL;
-    }
-    if (mode === 'gesturePlates' || mode === 'gesture') {
-      const frame = this.replay.frame(c, dt, reset);
-      const scale = gestureScale(c);
-      if (mode === 'gesturePlates') {
-        const pose = frame === null ? undefined : replayPlates[frame];
-        this.plates.children.forEach((child, i) => { child.visible = i === (pose?.plate ?? 0); });
-        if (pose) this.plates.scale.set(scale * pose.width, scale * pose.height, scale);
-        else this.plates.scale.setScalar(1);
-      } else if (frame !== null) {
-        this.reference.visible = true;
-        this.reference.scale.setScalar(scale);
-        this.reference.children.forEach((child, i) => { child.visible = i === frame; });
-      }
-      return NEUTRAL;
-    }
     return c;
   }
 }

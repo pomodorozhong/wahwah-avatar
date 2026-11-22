@@ -101,6 +101,20 @@ export function styleGallery(model = 'tofu'): Layout {
   return { cols, rows, cells };
 }
 
+/** The mouth modes the Mouths profile shows Tofu in, in grid order. Sculpted lips and hinged jaw are left out: on Tofu they look like its own mouth. */
+const galleryMouths: MouthMode[] = ['original', 'plates', 'gesturePlates', 'contour', 'gesture'];
+
+/** A grid showing Tofu in each gallery mouth mode, three to a row. */
+export function mouthGallery(): Layout {
+  const cols = 3;
+  const rows = Math.ceil(galleryMouths.length / cols);
+  const cells = Array.from({ length: cols * rows }, (_, i): CellState =>
+    galleryMouths[i] ? { model: 'tofu', mouth: galleryMouths[i], ink: 'bayer', style: 'model' } : emptyCell());
+  return { cols, rows, cells };
+}
+
+export const MOUTH_PROFILE = 'Mouths';
+
 export const PROFILES_KEY = 'wahwah-avatar.profiles.v1';
 /** The profile a first visit starts on, holding the style gallery. */
 export const DEFAULT_PROFILE = 'Tofu styles';

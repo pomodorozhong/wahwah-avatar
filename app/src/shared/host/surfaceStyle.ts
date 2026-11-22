@@ -111,8 +111,12 @@ function applyUnlitStyle(material: THREE.MeshBasicMaterial, style: RenderStyle):
   const id = style === 'painted-toon' ? 1 : style === 'comic-print' ? 3 : 2;
   const outline = material.name === 'ink';
   const printPixelScale = id === 3 && !outline ? trackPrintScale(material) : undefined;
-  material.customProgramCacheKey = () => `wahwah-unlit-${id}-${outline}`;
-  material.onBeforeCompile = (shader) => {
+  // Chain any earlier patch, such as Tofu's mouth contour.
+  const before = material.onBeforeCompile;
+  const beforeKey = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${beforeKey()}-wahwah-unlit-${id}-${outline}`;
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
     shader.defines = { ...shader.defines, WAHWAH_STYLE: id, WAHWAH_OUTLINE: outline ? 1 : 0 };
     if (printPixelScale) shader.uniforms.printPixelScale = printPixelScale;
     shader.vertexShader = 'varying vec3 surfacePosition;\nvarying vec3 styleViewPosition;\n' + shader.vertexShader

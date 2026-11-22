@@ -15,7 +15,8 @@ import { InkDitherPass } from '../shared/host/inkDither';
 import { ComicPrintPass } from '../shared/host/comicPrint';
 import localModels from 'virtual:local-models';
 import {
-  DEFAULT_PROFILE, MAX_SIDE, PROFILES_KEY, STORAGE_KEY, defaultLayout, parseProfiles, resizeLayout, serializeProfiles, styleGallery,
+  DEFAULT_PROFILE, MAX_SIDE, MOUTH_PROFILE, PROFILES_KEY, STORAGE_KEY, defaultLayout, mouthGallery,
+  parseProfiles, resizeLayout, serializeProfiles, styleGallery,
   type CellState, type Layout, type Profiles,
 } from './layout';
 import { closeMenu, openMenu, type MenuItem } from './menu';
@@ -416,12 +417,12 @@ function newProfile(): void {
   save();
 }
 
-/** Open the profile that shows Tofu in every style at once, rebuilding it so it lists the current styles. */
-function showStyleGallery(): void {
+/** Open a showcase profile, rebuilding it so it lists the current styles or mouths. */
+function showGallery(name: string, layout: Layout): void {
   save();
-  profiles.layouts[DEFAULT_PROFILE] = styleGallery();
-  profiles.active = DEFAULT_PROFILE;
-  showLayout(profiles.layouts[DEFAULT_PROFILE]);
+  profiles.layouts[name] = layout;
+  profiles.active = name;
+  showLayout(layout);
   save();
 }
 
@@ -449,7 +450,8 @@ layoutBtn.addEventListener('click', () => {
       onRemove: names.length > 1 ? () => deleteProfile(name) : undefined,
     })),
     { label: 'New profile…', accent: true, onPick: newProfile },
-    { label: 'Show every Tofu style', accent: true, onPick: showStyleGallery },
+    { label: 'Show every Tofu style', accent: true, onPick: () => showGallery(DEFAULT_PROFILE, styleGallery()) },
+    { label: 'Show every Tofu mouth', accent: true, onPick: () => showGallery(MOUTH_PROFILE, mouthGallery()) },
     { divider: true },
     { node: sizePicker() },
     { divider: true },

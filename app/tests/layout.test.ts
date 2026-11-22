@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_SIDE, clampSide, defaultLayout, parseLayout, parseProfiles, resizeLayout, serializeLayout, serializeProfiles, styleGallery, type Layout,
+  mouthGallery,
 } from '../src/playground/layout';
 
 const valid = (m: string) => m === 'tofu' || m === 'local:vrm/a.vrm';
@@ -96,6 +97,17 @@ describe('styleGallery', () => {
 
   it('survives saving', () => {
     expect(parseLayout(serializeLayout(styleGallery()), valid)).toEqual(styleGallery());
+  });
+});
+
+describe('mouthGallery', () => {
+  it('shows Tofu in five mouth modes, leaving out sculpted lips and the hinged jaw', () => {
+    const gallery = mouthGallery();
+    expect([gallery.cols, gallery.rows]).toEqual([3, 2]);
+    expect(gallery.cells.slice(0, 5).map((c) => [c.model, c.mouth])).toEqual(
+      ['original', 'plates', 'gesturePlates', 'contour', 'gesture'].map((m) => ['tofu', m]),
+    );
+    expect(gallery.cells[5].model).toBeNull();
   });
 });
 

@@ -9,7 +9,8 @@ import type { FaceHost, RenderStyle } from './host';
 import { Blinker, controlsToVrmVisemes } from './mappings';
 import { FaceNavigation } from './faceNavigation';
 import { StudyMotion } from './studyMotion';
-import { PuppetMouth } from './puppetMouth';
+import { PuppetMouth, type MouthRig } from './puppetMouth';
+import { TofuMouth } from './tofuMouth';
 import { applySurfaceStyle } from './surfaceStyle';
 import type { MouthMode } from './mouthPlan';
 
@@ -30,10 +31,10 @@ export class VrmFace implements FaceHost {
   readonly camera = new THREE.PerspectiveCamera(20, 1, 0.05, 20);
   readonly navigation = new FaceNavigation(this.camera);
   idleMotion = true;
-  /** How the mouth is drawn; only the sample model has replacements (see `puppetMouth`). */
+  /** How the mouth is drawn; only Tofu and the sample model have the mouth modes (see `puppetMouth`). */
   mouthMode: MouthMode = 'original';
-  /** Set when the loaded model is the sample the replacement mouths were cut for. */
-  puppetMouth?: PuppetMouth;
+  /** Set when the loaded model has the mouth modes: Tofu, or the sample the replacement mouths were cut for. */
+  puppetMouth?: MouthRig;
   /** How the loaded model is drawn, from its file or the caller; the playground adds the full-screen pass for it. */
   renderStyle: RenderStyle = 'standard';
   status ='Choose a VRM model.';
@@ -92,7 +93,7 @@ export class VrmFace implements FaceHost {
         VRMUtils.deepDispose(this.vrm.scene);
       }
       this.vrm = vrm;
-      this.puppetMouth = isTofu ? undefined : PuppetMouth.forModel(vrm);
+      this.puppetMouth = isTofu ? TofuMouth.forModel(vrm) : PuppetMouth.forModel(vrm);
       this.renderStyle = style ?? (isTofu ? 'standard' : styleOf(gltf.asset));
       if (this.renderStyle !== 'standard') applySurfaceStyle(vrm.scene, this.renderStyle);
       this.stage.add(vrm.scene);
