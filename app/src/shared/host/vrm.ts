@@ -34,7 +34,7 @@ export class VrmFace implements FaceHost {
   mouthMode: MouthMode = 'original';
   /** Set when the loaded model is the sample the replacement mouths were cut for. */
   puppetMouth?: PuppetMouth;
-  /** How the loaded model is drawn, from its file; the playground adds the full-screen pass for it. */
+  /** How the loaded model is drawn, from its file or the caller; the playground adds the full-screen pass for it. */
   renderStyle: RenderStyle = 'standard';
   status ='Choose a VRM model.';
   private vrm: VRM | null = null;
@@ -72,7 +72,8 @@ export class VrmFace implements FaceHost {
     this.scene.add(this.camera); // so lookAt can target it
   }
 
-  async load(url: string, label: string, isTofu = false): Promise<void> {
+  /** `style` overrides the style the model file asks for (Tofu's own is `standard`). */
+  async load(url: string, label: string, isTofu = false, style?: RenderStyle): Promise<void> {
     const id = ++this.loadId;
     this.status = `Loading ${label}…`;
     const loader = new GLTFLoader();
@@ -92,7 +93,7 @@ export class VrmFace implements FaceHost {
       }
       this.vrm = vrm;
       this.puppetMouth = isTofu ? undefined : PuppetMouth.forModel(vrm);
-      this.renderStyle = isTofu ? 'standard' : styleOf(gltf.asset);
+      this.renderStyle = style ?? (isTofu ? 'standard' : styleOf(gltf.asset));
       if (this.renderStyle !== 'standard') applySurfaceStyle(vrm.scene, this.renderStyle);
       this.stage.add(vrm.scene);
       if (vrm.lookAt) vrm.lookAt.target = this.camera;
