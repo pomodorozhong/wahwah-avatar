@@ -10,11 +10,12 @@ import { VrmFace } from '../shared/host/vrm';
 import { ControlFollower } from '../shared/host/follower';
 import { mouthModes, type MouthMode } from '../shared/host/mouthPlan';
 import { inkMethods, type InkMethod } from '../shared/host/inkMethods';
+import { styleChoices, type StyleChoice } from '../shared/host/styleChoices';
 import { InkDitherPass } from '../shared/host/inkDither';
 import { ComicPrintPass } from '../shared/host/comicPrint';
 import localModels from 'virtual:local-models';
 import {
-  MAX_SIDE, PROFILES_KEY, STORAGE_KEY, defaultLayout, parseProfiles, resizeLayout, serializeProfiles,
+  DEFAULT_PROFILE, MAX_SIDE, PROFILES_KEY, STORAGE_KEY, defaultLayout, parseProfiles, resizeLayout, serializeProfiles, styleGallery,
   type CellState, type Layout, type Profiles,
 } from './layout';
 import { closeMenu, openMenu, type MenuItem } from './menu';
@@ -82,6 +83,8 @@ interface Cell {
   mouthChip: HTMLButtonElement;
   inkEl: HTMLSelectElement;
   inkChip: HTMLButtonElement;
+  styleEl: HTMLSelectElement;
+  styleChip: HTMLButtonElement;
   hintEl: HTMLElement;
   statusEl: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -93,30 +96,35 @@ let cells: Cell[] = [];
 let cols = 1;
 let rows = 1;
 
-function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod): Cell {
+function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod, style: StyleChoice): Cell {
   const el = document.createElement('section');
   el.className = 'panel';
   el.innerHTML =
     '<div class="chips">' +
     '<button type="button" class="pill" aria-haspopup="menu" aria-expanded="false"></button>' +
+    '<button type="button" class="chip style-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
     '<button type="button" class="chip mouth-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
     '<button type="button" class="chip ink-chip" aria-haspopup="menu" aria-expanded="false" hidden></button>' +
     '</div><div class="hint">Choose a model</div><div class="status"></div>' +
-    '<div class="state" hidden><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth"></select><select class="ink" aria-label="Ink dither"></select></div>';
+    '<div class="state" hidden><select class="model" aria-label="Model"></select><select class="mouth" aria-label="Mouth"></select><select class="ink" aria-label="Ink dither"></select><select class="style" aria-label="Style"></select></div>';
   const modelEl = el.querySelector<HTMLSelectElement>('.model')!;
   const mouthEl = el.querySelector<HTMLSelectElement>('.mouth')!;
   const inkEl = el.querySelector<HTMLSelectElement>('.ink')!;
+  const styleEl = el.querySelector<HTMLSelectElement>('.style')!;
   const canvas = document.createElement('canvas');
   el.prepend(canvas);
   mouthEl.replaceChildren(...Object.entries(mouthModes).map(([m, label]) => new Option(label, m)));
   mouthEl.value = mouth;
   inkEl.replaceChildren(...Object.entries(inkMethods).map(([m, { label }]) => new Option(label, m)));
   inkEl.value = ink;
+  styleEl.replaceChildren(...Object.entries(styleChoices).map(([m, label]) => new Option(label, m)));
+  styleEl.value = style;
   const cell: Cell = {
-    el, modelEl, mouthEl, inkEl, canvas,
+    el, modelEl, mouthEl, inkEl, styleEl, canvas,
     modelChip: el.querySelector<HTMLButtonElement>('.pill')!,
     mouthChip: el.querySelector<HTMLButtonElement>('.mouth-chip')!,
     inkChip: el.querySelector<HTMLButtonElement>('.ink-chip')!,
+    styleChip: el.querySelector<HTMLButtonElement>('.style-chip')!,
     hintEl: el.querySelector<HTMLElement>('.hint')!,
     statusEl: el.querySelector<HTMLElement>('.status')!,
     ctx: canvas.getContext('2d')!,
@@ -138,7 +146,12 @@ function makeCell(model: string | null, mouth: MouthMode, ink: InkMethod): Cell 
     save();
   });
   inkEl.addEventListener('change', save);
-  for (const [chip, select] of [[cell.modelChip, modelEl], [cell.mouthChip, mouthEl], [cell.inkChip, inkEl]] as const) {
+  // A style is applied to the model's materials as it loads, so changing it reloads the model.
+  styleEl.addEventListener('change', () => {
+    setModel(cell, modelEl.value || null);
+    save();
+  });
+  for (const [chip, select] of [[cell.modelChip, modelEl], [cell.mouthChip, mouthEl], [cell.inkChip, inkEl], [cell.styleChip, styleEl]] as const) {
     chip.addEventListener('click', () => openMenu(chip, selectItems(select, () => refreshChips(cell))));
   }
   setModel(cell, model);
@@ -175,6 +188,8 @@ function refreshChips(cell: Cell): void {
   cell.mouthChip.hidden = cell.mouthEl.hidden;
   set(cell.inkChip, `${cell.inkEl.selectedOptions[0]?.text ?? ''} ▾`);
   cell.inkChip.hidden = cell.inkEl.hidden;
+  set(cell.styleChip, `${cell.styleEl.selectedOptions[0]?.text ?? ''} ▾`);
+  cell.styleChip.hidden = !cell.modelEl.value;
   cell.hintEl.hidden = !!cell.modelEl.value;
 }
 
@@ -184,7 +199,8 @@ function setModel(cell: Cell, model: string | null): void {
   cell.statusEl.textContent = '';
   cell.mouthEl.hidden = true;
   cell.inkEl.hidden = true;
-  cell.ctx.clearRect(0, 0, cell.canvas.width, cell.canvas.height);
+  // Zero size clears the canvas and makes the next frame size the new host to the cell.
+  cell.canvas.width = 0;
   cell.modelEl.value = model ?? '';
   cell.modelEl.dataset.prev = cell.modelEl.value;
   const source = model ? resolveSource(model) : null;
@@ -197,7 +213,8 @@ function setModel(cell: Cell, model: string | null): void {
   host.navigation.connect(cell.canvas);
   host.mouthMode = cell.mouthEl.value as MouthMode;
   cell.host = host;
-  void host.load(source.url, source.label, source.tofu);
+  const style = cell.styleEl.value as StyleChoice;
+  void host.load(source.url, source.label, source.tofu, style === 'model' ? undefined : style);
 }
 
 function disposeCell(cell: Cell): void {
@@ -208,7 +225,7 @@ function disposeCell(cell: Cell): void {
 function currentLayout(): Layout {
   return {
     cols, rows,
-    cells: cells.map((c) => ({ model: c.modelEl.value || null, mouth: c.mouthEl.value as MouthMode, ink: c.inkEl.value as InkMethod })),
+    cells: cells.map((c) => ({ model: c.modelEl.value || null, mouth: c.mouthEl.value as MouthMode, ink: c.inkEl.value as InkMethod, style: c.styleEl.value as StyleChoice })),
   };
 }
 
@@ -245,7 +262,7 @@ function applySize(newCols: number, newRows: number): void {
       }
       const back = hidden.get(`${r},${c}`);
       hidden.delete(`${r},${c}`);
-      kept.push(makeCell(back?.model ?? null, back?.mouth ?? 'original', back?.ink ?? 'bayer'));
+      kept.push(makeCell(back?.model ?? null, back?.mouth ?? 'original', back?.ink ?? 'bayer', back?.style ?? 'model'));
     }
   }
   cells.forEach((cell, i) => {
@@ -399,6 +416,15 @@ function newProfile(): void {
   save();
 }
 
+/** Open the profile that shows Tofu in every style at once, rebuilding it so it lists the current styles. */
+function showStyleGallery(): void {
+  save();
+  profiles.layouts[DEFAULT_PROFILE] = styleGallery();
+  profiles.active = DEFAULT_PROFILE;
+  showLayout(profiles.layouts[DEFAULT_PROFILE]);
+  save();
+}
+
 function deleteProfile(name: string): void {
   if (!confirm(`Delete the profile "${name}"? This cannot be undone.`)) return;
   closeMenu();
@@ -423,6 +449,7 @@ layoutBtn.addEventListener('click', () => {
       onRemove: names.length > 1 ? () => deleteProfile(name) : undefined,
     })),
     { label: 'New profile…', accent: true, onPick: newProfile },
+    { label: 'Show every Tofu style', accent: true, onPick: showStyleGallery },
     { divider: true },
     { node: sizePicker() },
     { divider: true },
@@ -461,7 +488,7 @@ function showLayout(layout: Layout): void {
   hidden.clear();
   cols = layout.cols;
   rows = layout.rows;
-  cells = layout.cells.map((c) => makeCell(c.model, c.mouth, c.ink));
+  cells = layout.cells.map((c) => makeCell(c.model, c.mouth, c.ink, c.style));
   showGrid();
 }
 

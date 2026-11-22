@@ -7,7 +7,7 @@ import type * as THREE from 'three';
 import { type FaceControls } from 'wahwah/performance';
 import type { FaceNavigation } from './faceNavigation';
 
-/** How a model is drawn. Variants other than `standard` are chosen by the model file (see `wahwahRenderStyle` in tools/remake-vrm-models.mjs). */
+/** How a model is drawn. A model file can ask for a variant other than `standard` (see `wahwahRenderStyle` in tools/remake-vrm-models.mjs), and a playground cell can override it. */
 export type RenderStyle = 'standard' | 'painted-toon' | 'ink-dither' | 'comic-print';
 
 export interface FaceHost {

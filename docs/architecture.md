@@ -42,7 +42,8 @@ flowchart LR
 
 **Visual styles.** These change how a model is drawn, not how it moves.
 
-- `surfaceStyle.ts`: patches a model's MToon materials for the painted-toon, ink-dither and comic-print looks.
+- `surfaceStyle.ts`: patches a model's MToon materials for the painted-toon, ink-dither and comic-print looks, and Tofu's unlit materials for the same three.
+- `styleChoices.ts`: the styles a playground cell can pick, overriding the one the model file asks for. Free of Three.js, like `inkMethods.ts`.
 - `inkDither.ts` and `comicPrint.ts`: the full-screen passes that draw a styled model through a small render target.
 - `inkMethods.ts`: the table of dither methods, kept free of Three.js so a saved layout can be checked against it.
 
